@@ -17,7 +17,6 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.event.player.PlayerBedEnterEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
@@ -93,8 +92,6 @@ public final class GFManager implements Listener {
 
     // fishing
     private static final DecimalFormat DF = new DecimalFormat("0.00");
-    private BukkitTask fishingTask;
-    private long tickCounter = 0L;
 
     // cooking tasks
     private final Map<UUID, BukkitTask> cooking = new HashMap<>();
@@ -460,13 +457,6 @@ public final class GFManager implements Listener {
             }
         }.runTaskTimer(plugin, 20L * 20, 20L * 20); // every 20s
 
-        fishingTask = new BukkitRunnable() {
-            @Override
-            public void run() {
-                tickCounter++;
-                tickFishingChallenges();
-            }
-        }.runTaskTimer(plugin, 1L, 1L);
     }
 
     private void onDayStart() {
@@ -1143,15 +1133,6 @@ public final class GFManager implements Listener {
         }
 
         // vanilla fishing handles rod clicks
-    }
-
-    @EventHandler
-    public void onFish(PlayerFishEvent event) {
-        // keep vanilla fishing behavior
-    }
-
-    private void tickFishingChallenges() {
-        // vanilla fishing handles timing and results
     }
 
     private void giveToPlayer(Player p, ItemStack item) {
