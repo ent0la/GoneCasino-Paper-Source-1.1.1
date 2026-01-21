@@ -339,6 +339,49 @@ public final class GFManager implements Listener {
         admin.sendMessage(Text.ok("GONE Fishing остановлен."));
     }
 
+    public void resetProgress(Player admin) {
+        double cleared = 0.0;
+        if (plugin.bank().isAvailable()) {
+            cleared = plugin.bank().clear();
+        }
+
+        for (BukkitTask task : cooking.values()) {
+            task.cancel();
+        }
+        cooking.clear();
+        challenges.clear();
+
+        pendingQuotaReduction = 0;
+        sharedRodPower = 0;
+        sharedRodLuck = 0;
+        sharedWindowBonusMs = 0;
+        sharedValueMultiplier = 1.0;
+        sharedPointsMultiplier = 1.0;
+        sharedPullCooldownReductionMs = 0;
+        sharedPullReduction = 0;
+        upgradePurchaseCounts.clear();
+        quotaProgress = 0;
+        quotaRequired = 0;
+        quotaMet = false;
+        day = 0;
+
+        if (running) {
+            isNight = false;
+            onDayStart();
+        } else {
+            updateBossbar();
+        }
+
+        updateTeamRods();
+        save();
+
+        if (plugin.bank().isAvailable()) {
+            admin.sendMessage(Text.ok("Прогресс сброшен. Фишки удалены: " + (int) Math.floor(cleared) + ". День 1."));
+        } else {
+            admin.sendMessage(Text.ok("Прогресс сброшен. День 1."));
+        }
+    }
+
     public void status(Player p) {
         p.sendMessage(Text.info("GONE Fishing: " + (running ? "ON" : "OFF")));
         p.sendMessage(Text.info("Игроков: " + players.size() + "/4"));
@@ -1390,34 +1433,22 @@ public final class GFManager implements Listener {
     }
 
     private String rollSpecies(FishRarity rarity) {
-        List<String> pool = switch (rarity) {
-            case COMMON -> List.of("Треска", "Карась", "Плотва", "Окунь");
-            case UNCOMMON -> List.of("Лосось", "Сиг", "Речной форель", "Щука");
-            case RARE -> List.of("Глубинная рыба", "Серебряный сом", "Голубой линь");
-            case EPIC -> List.of("Тёмный карп", "Лунный осётр", "Сонный угорь");
-            case LEGENDARY -> List.of("Рыба-кошмар", "Клинок-рыба", "Звёздный скат");
-        };
+        List<String> pool = GFItems.getSpeciesPool(rarity);
         return pool.get(random.nextInt(pool.size()));
     }
 
     private FishData rollNightFish(int rodLuck) {
         double bonus = plugin.getConfig().getDouble("night_fish.points_bonus", 0.25);
-        List<NightFish> pool = List.of(
-                new NightFish("Лунная щука", FishRarity.RARE, 3.0, 6.5),
-                new NightFish("Тень-угорь", FishRarity.EPIC, 6.5, 12.0),
-                new NightFish("Бездна-катран", FishRarity.LEGENDARY, 11.0, 19.0)
-        );
+        List<GFItems.NightFishSpec> pool = GFItems.getNightFishPool();
         int idx = Math.min(pool.size() - 1, Math.max(0, random.nextInt(pool.size()) + Math.min(2, rodLuck / 2)));
-        NightFish pick = pool.get(idx);
+        GFItems.NightFishSpec pick = pool.get(idx);
 
-        double weight = pick.minWeight + random.nextDouble() * (pick.maxWeight - pick.minWeight);
-        int basePoints = (int) Math.round((weight * 5 + (pick.rarity.ordinal() * 8)) * (1.0 + bonus));
+        double weight = pick.minWeight() + random.nextDouble() * (pick.maxWeight() - pick.minWeight());
+        int basePoints = (int) Math.round((weight * 5 + (pick.rarity().ordinal() * 8)) * (1.0 + bonus));
         int points = (int) Math.round(basePoints * sharedPointsMultiplier);
-        int value = (int) Math.round(points * pick.rarity.valueMult * sharedValueMultiplier);
-        return new FishData(pick.rarity, weight, points, value, false, pick.name);
+        int value = (int) Math.round(points * pick.rarity().valueMult * sharedValueMultiplier);
+        return new FishData(pick.rarity(), weight, points, value, false, pick.name());
     }
-
-    private record NightFish(String name, FishRarity rarity, double minWeight, double maxWeight) {}
 
     private static final class FishingChallenge {
         final FishData fish;
