@@ -25,6 +25,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
+import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.BoundingBox;
 
@@ -221,50 +222,62 @@ public final class GFManager implements Listener {
         if (tickTask != null) return;
 
         // Day/night watcher + trader management + quota check
-        tickTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (!running || altarBlock == null || altarBlock.getWorld() == null) return;
-            World w = altarBlock.getWorld();
-            boolean nowNight = w.getTime() >= 12000;
-            if (nowNight != isNight) {
-                isNight = nowNight;
-                if (isNight) onNightStart();
-                else onDayStart();
+        tickTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!running || altarBlock == null || altarBlock.getWorld() == null) return;
+                World w = altarBlock.getWorld();
+                boolean nowNight = w.getTime() >= 12000;
+                if (nowNight != isNight) {
+                    isNight = nowNight;
+                    if (isNight) onNightStart();
+                    else onDayStart();
+                }
+                updateBossbar();
             }
-            updateBossbar();
-        }, 20L, 20L);
+        }.runTaskTimer(plugin, 20L, 20L);
 
         // Altar flame particles
-        flameTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (altarBlock == null || altarBlock.getWorld() == null) return;
-            World w = altarBlock.getWorld();
-            Location p = altarBlock.clone().add(0.5, 1.2, 0.5);
-            Particle particle = quotaMet ? Particle.SOUL_FIRE_FLAME : Particle.FLAME;
-            w.spawnParticle(particle, p, 10, 0.15, 0.25, 0.15, 0.0);
-        }, 10L, 10L);
+        flameTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (altarBlock == null || altarBlock.getWorld() == null) return;
+                World w = altarBlock.getWorld();
+                Location p = altarBlock.clone().add(0.5, 1.2, 0.5);
+                Particle particle = quotaMet ? Particle.SOUL_FIRE_FLAME : Particle.FLAME;
+                w.spawnParticle(particle, p, 10, 0.15, 0.25, 0.15, 0.0);
+            }
+        }.runTaskTimer(plugin, 10L, 10L);
 
         // Safe zone purge
         int interval = plugin.getConfig().getInt("house.purge_interval_ticks", 20);
-        purgeTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (houseInfo == null || altarBlock == null || altarBlock.getWorld() == null) return;
-            BoundingBox box = houseInfo.safeZone();
-            World w = altarBlock.getWorld();
-            for (Entity e : w.getEntities()) {
-                if (!(e instanceof Monster)) continue;
-                if (box.contains(e.getLocation().toVector())) {
-                    e.remove();
+        purgeTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (houseInfo == null || altarBlock == null || altarBlock.getWorld() == null) return;
+                BoundingBox box = houseInfo.safeZone();
+                World w = altarBlock.getWorld();
+                for (Entity e : w.getEntities()) {
+                    if (!(e instanceof Monster)) continue;
+                    if (box.contains(e.getLocation().toVector())) {
+                        e.remove();
+                    }
                 }
             }
-        }, interval, interval);
+        }.runTaskTimer(plugin, interval, interval);
 
         // Horror ambience at night
-        horrorTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (!running || !isNight) return;
-            if (random.nextDouble() < 0.18) {
-                forEachGamePlayer(pp -> {
-                    pp.playSound(pp.getLocation(), Sound.AMBIENT_CAVE, 0.6f, 0.8f);
-                });
+        horrorTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!running || !isNight) return;
+                if (random.nextDouble() < 0.18) {
+                    forEachGamePlayer(pp -> {
+                        pp.playSound(pp.getLocation(), Sound.AMBIENT_CAVE, 0.6f, 0.8f);
+                    });
+                }
             }
-        }, 20L * 20, 20L * 20); // every 20s
+        }.runTaskTimer(plugin, 20L * 20, 20L * 20); // every 20s
     }
 
     private void onDayStart() {
@@ -589,25 +602,28 @@ public final class GFManager implements Listener {
                     p.sendMessage(Text.info("Жарим рыбу... " + seconds + "с"));
                     p.playSound(p.getLocation(), Sound.BLOCK_CAMPFIRE_CRACKLE, 0.8f, 1.0f);
 
-                    BukkitTask task = Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                        cooking.remove(p.getUniqueId());
+                    BukkitTask task = new BukkitRunnable() {
+                        @Override
+                        public void run() {
+                            cooking.remove(p.getUniqueId());
 
-                        double vm = plugin.getConfig().getDouble("cooking.value_multiplier", 1.5);
-                        double pm = plugin.getConfig().getDouble("cooking.points_multiplier", 1.35);
+                            double vm = plugin.getConfig().getDouble("cooking.value_multiplier", 1.5);
+                            double pm = plugin.getConfig().getDouble("cooking.points_multiplier", 1.35);
 
-                        FishData cooked = new FishData(
-                                fish.rarity(),
-                                fish.weightKg(),
-                                (int) Math.round(fish.points() * pm),
-                                (int) Math.round(fish.value() * vm),
-                                true,
-                                fish.speciesName()
-                        );
-                        ItemStack cookedItem = GFItems.createFishItem(cooked);
-                        p.getInventory().addItem(cookedItem);
-                        p.sendMessage(Text.ok("Готово! Рыба пожарена."));
-                        p.playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1.3f);
-                    }, 20L * seconds);
+                            FishData cooked = new FishData(
+                                    fish.rarity(),
+                                    fish.weightKg(),
+                                    (int) Math.round(fish.points() * pm),
+                                    (int) Math.round(fish.value() * vm),
+                                    true,
+                                    fish.speciesName()
+                            );
+                            ItemStack cookedItem = GFItems.createFishItem(cooked);
+                            p.getInventory().addItem(cookedItem);
+                            p.sendMessage(Text.ok("Готово! Рыба пожарена."));
+                            p.playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1.3f);
+                        }
+                    }.runTaskLater(plugin, 20L * seconds);
 
                     cooking.put(p.getUniqueId(), task);
                 }
