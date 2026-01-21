@@ -570,8 +570,8 @@ public final class GFManager implements Listener {
         r.customName(Component.text("Озёрное Чудовище", NamedTextColor.DARK_RED));
         r.setCustomNameVisible(true);
         r.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 20 * 120, 1));
-        r.addPotionEffect(new PotionEffect(PotionEffectType.INCREASE_DAMAGE, 20 * 120, 0));
-        r.addPotionEffect(new PotionEffect(PotionEffectType.DAMAGE_RESISTANCE, 20 * 120, 1));
+        r.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, 20 * 120, 0));
+        r.addPotionEffect(new PotionEffect(PotionEffectType.RESISTANCE, 20 * 120, 1));
         r.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 20 * 120, 0));
         r.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 20 * 120, 0));
         r.setSilent(false);
@@ -609,7 +609,7 @@ public final class GFManager implements Listener {
                         monster.teleport(tp);
                         p.playSound(p.getLocation(), Sound.ENTITY_ENDERMAN_SCREAM, 0.8f, 0.7f);
                         p.playSound(p.getLocation(), Sound.ENTITY_WARDEN_AMBIENT, 0.6f, 0.6f);
-                        p.spawnParticle(Particle.SMOKE_LARGE, p.getLocation().add(0, 0.6, 0), 16, 0.4, 0.5, 0.4, 0.01);
+                        p.spawnParticle(Particle.LARGE_SMOKE, p.getLocation().add(0, 0.6, 0), 16, 0.4, 0.5, 0.4, 0.01);
                         p.spawnParticle(Particle.SOUL, p.getLocation().add(0, 0.8, 0), 10, 0.5, 0.5, 0.5, 0.02);
                         if (p.getLocation().distanceSquared(monster.getLocation()) < 64) {
                             p.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, 40, 0, true, false, true));
@@ -1342,6 +1342,28 @@ public final class GFManager implements Listener {
                 p.playSound(p.getLocation(), Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 0.6f, 0.6f);
                 continue;
             }
+        }
+
+        double baseSpeed = plugin.getConfig().getDouble("fishing.minigame.fish_base_speed", 0.018);
+        double variance = plugin.getConfig().getDouble("fishing.minigame.fish_speed_variance", 0.02);
+        double maxSpeed = baseSpeed + variance * ch.profile.aggression;
+        double inertia = plugin.getConfig().getDouble("fishing.minigame.fish_inertia", 0.9);
+        double jerk = plugin.getConfig().getDouble("fishing.minigame.fish_jerk", 0.015);
+
+        double steer = (ch.fishTarget - ch.fishPos) * (0.05 + ch.profile.aggression * 0.06);
+        ch.fishVel += steer + (random.nextDouble() * 2 - 1) * jerk * ch.profile.jitter;
+        ch.fishVel *= inertia;
+        ch.fishVel = Math.max(-maxSpeed, Math.min(maxSpeed, ch.fishVel));
+        ch.fishPos += ch.fishVel;
+
+        if (ch.fishPos < 0.0) {
+            ch.fishPos = 0.0;
+            ch.fishVel = Math.abs(ch.fishVel) * 0.6;
+        } else if (ch.fishPos > 1.0) {
+            ch.fishPos = 1.0;
+            ch.fishVel = -Math.abs(ch.fishVel) * 0.6;
+        }
+    }
 
             if (tickCounter % ch.hudIntervalTicks == 0) {
                 p.sendActionBar(fishingHud(ch, inZone));
@@ -1434,6 +1456,8 @@ public final class GFManager implements Listener {
                     .append(Component.text(fish.speciesName(), fish.rarity().color))
                     .append(Component.text(" • " + fish.quality().ruName + " • Вес: " + DF.format(fish.weightKg()) + "кг • Очки: " + fish.points(), NamedTextColor.GRAY))
             );
+            final FishData finalFish = fish;
+
             forEachGamePlayer(pp -> {
                 if (pp.getUniqueId().equals(p.getUniqueId())) return;
                 pp.sendMessage(Component.text("🌊 " + p.getName() + " поймал: ", NamedTextColor.AQUA)
@@ -1612,7 +1636,8 @@ public final class GFManager implements Listener {
         // buff monsters at night
         m.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 20 * 120, 0));
         if (random.nextDouble() < 0.25) {
-            m.addPotionEffect(new PotionEffect(PotionEffectType.INCREASE_DAMAGE, 20 * 120, 0));
+            m.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, 20 * 120, 0));
+
         }
     }
 
