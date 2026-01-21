@@ -6,6 +6,7 @@ import net.milkbowl.vault.economy.EconomyResponse;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.plugin.RegisteredServiceProvider;
+import java.util.List;
 
 public final class ChipBank {
     private final GoneCasinoPlugin plugin;
@@ -41,7 +42,8 @@ public final class ChipBank {
         this.bankName = plugin.getConfig().getString("economy.bank_name", "gonecasino");
         this.bankSupported = economy.hasBankSupport();
         if (bankSupported) {
-            if (!economy.hasBank(bankName)) {
+            List<String> banks = economy.getBanks();
+            if (banks == null || !banks.contains(bankName)) {
                 economy.createBank(bankName, Bukkit.getOfflinePlayer(bankName));
             }
         } else {
