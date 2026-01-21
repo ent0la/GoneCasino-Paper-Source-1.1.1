@@ -74,6 +74,17 @@ public final class GFManager implements Listener {
 
     private org.bukkit.boss.BossBar bossBar;
 
+    private final Set<String> kitChestLocations = new LinkedHashSet<>();
+    private final Map<String, Integer> upgradePurchaseCounts = new HashMap<>();
+    private static final Set<String> UPGRADE_TYPES = Set.of(
+            GFItems.TYPE_ROD_POWER,
+            GFItems.TYPE_ROD_LUCK,
+            GFItems.TYPE_WINDOW_BOOST,
+            GFItems.TYPE_CATCH_BONUS,
+            GFItems.TYPE_PULL_COOLDOWN,
+            GFItems.TYPE_PULL_REDUCTION
+    );
+
     // trader
     private UUID traderUuid;
     private static final String TRADER_TITLE = "Странный торговец";
@@ -131,6 +142,15 @@ public final class GFManager implements Listener {
         this.sharedPointsMultiplier = yml.getDouble("shared.points_multiplier", 1.0);
         this.sharedPullCooldownReductionMs = yml.getInt("shared.pull_cooldown_reduction_ms", 0);
         this.sharedPullReduction = yml.getInt("shared.pull_reduction", 0);
+        this.kitChestLocations.clear();
+        this.kitChestLocations.addAll(yml.getStringList("kit_chests"));
+        this.upgradePurchaseCounts.clear();
+        var upgradeSection = yml.getConfigurationSection("shop_upgrade_counts");
+        if (upgradeSection != null) {
+            for (String key : upgradeSection.getKeys(false)) {
+                this.upgradePurchaseCounts.put(key, upgradeSection.getInt(key, 0));
+            }
+        }
 
         if (altarBlock != null && altarBlock.getWorld() != null) {
             int ox = plugin.getConfig().getInt("house.offset_x", 8);
@@ -140,6 +160,7 @@ public final class GFManager implements Listener {
             ensureStarterChestContents();
             updateTeamRods();
         }
+        updateKitChestRods();
 
         // start always-on tasks (they do nothing if not running)
         startTasks();
@@ -156,6 +177,10 @@ public final class GFManager implements Listener {
         yml.set("shared.points_multiplier", sharedPointsMultiplier);
         yml.set("shared.pull_cooldown_reduction_ms", sharedPullCooldownReductionMs);
         yml.set("shared.pull_reduction", sharedPullReduction);
+        yml.set("kit_chests", new ArrayList<>(kitChestLocations));
+        for (String type : UPGRADE_TYPES) {
+            yml.set("shop_upgrade_counts." + type, upgradePurchaseCounts.getOrDefault(type, 0));
+        }
         try {
             yml.save(file);
         } catch (IOException e) {
@@ -180,6 +205,53 @@ public final class GFManager implements Listener {
         if (running && !isNight) {
             spawnTrader();
         }
+    }
+
+    public boolean clearAltar(Block block) {
+        if (altarBlock == null || block == null) return false;
+        if (!block.getWorld().equals(altarBlock.getWorld())) return false;
+        if (block.getX() != altarBlock.getBlockX()
+                || block.getY() != altarBlock.getBlockY()
+                || block.getZ() != altarBlock.getBlockZ()) {
+            return false;
+        }
+        removeHouse();
+        despawnTrader();
+        altarBlock = null;
+        houseInfo = null;
+        save();
+        return true;
+    }
+
+    public boolean populateKitChest(Block block) {
+        if (!(block.getState() instanceof org.bukkit.block.Chest chest)) return false;
+        Inventory inv = chest.getInventory();
+        int rodCount = 0;
+        for (int i = 0; i < inv.getSize(); i++) {
+            ItemStack it = inv.getItem(i);
+            if (it == null) continue;
+            if (GFItems.isStarterRod(it)) {
+                if (rodCount >= 4) {
+                    inv.setItem(i, null);
+                } else {
+                    rodCount++;
+                    GFItems.updateStarterRod(it, sharedRodPower, sharedRodLuck);
+                }
+            }
+        }
+        for (int i = rodCount; i < 4; i++) {
+            ItemStack rod = GFItems.createStarterRod();
+            GFItems.updateStarterRod(rod, sharedRodPower, sharedRodLuck);
+            inv.addItem(rod);
+        }
+        chest.update();
+
+        String key = LocUtil.serializeBlock(block.getLocation());
+        if (!key.isBlank()) {
+            kitChestLocations.add(key);
+            save();
+        }
+        return true;
     }
 
     public void join(Player p) {
@@ -497,6 +569,59 @@ public final class GFManager implements Listener {
                 chest.update();
             }
         }
+
+        updateKitChestRods();
+    }
+
+    private void updateKitChestRods() {
+        if (kitChestLocations.isEmpty()) return;
+        boolean dirty = false;
+        Iterator<String> it = kitChestLocations.iterator();
+        while (it.hasNext()) {
+            Location loc = LocUtil.deserializeBlock(it.next());
+            if (loc == null) {
+                it.remove();
+                dirty = true;
+                continue;
+            }
+            Block block = loc.getBlock();
+            if (!(block.getState() instanceof org.bukkit.block.Chest chest)) {
+                it.remove();
+                dirty = true;
+                continue;
+            }
+            for (ItemStack item : chest.getInventory().getContents()) {
+                if (item == null) continue;
+                if (!GFItems.isStarterRod(item)) continue;
+                GFItems.updateStarterRod(item, sharedRodPower, sharedRodLuck);
+            }
+            chest.update();
+        }
+        if (dirty) {
+            save();
+        }
+    }
+
+    private void removeHouse() {
+        if (houseInfo == null || altarBlock == null || altarBlock.getWorld() == null) return;
+        BoundingBox box = houseInfo.safeZone();
+        World w = altarBlock.getWorld();
+        int minX = (int) Math.floor(box.getMinX());
+        int maxX = (int) Math.ceil(box.getMaxX());
+        int minY = (int) Math.floor(box.getMinY());
+        int maxY = (int) Math.ceil(box.getMaxY());
+        int minZ = (int) Math.floor(box.getMinZ());
+        int maxZ = (int) Math.ceil(box.getMaxZ());
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    w.getBlockAt(x, y, z).setType(Material.AIR, false);
+                }
+            }
+        }
+        if (houseInfo.slotMachine() != null) {
+            plugin.tables().delTable(houseInfo.slotMachine().getBlock());
+        }
     }
 
     private void clearNightMonsters() {
@@ -598,20 +723,20 @@ public final class GFManager implements Listener {
     private Inventory createShopInventory() {
         Inventory inv = Bukkit.createInventory(null, 27, Component.text(SHOP_TITLE, NamedTextColor.GOLD));
 
-        inv.setItem(10, addPriceLore(GFItems.createBait(1, 8), plugin.getConfig().getInt("shop.bait_tier1", 20)));
-        inv.setItem(11, addPriceLore(GFItems.createBait(2, 8), plugin.getConfig().getInt("shop.bait_tier2", 75)));
-        inv.setItem(12, addPriceLore(GFItems.createBait(3, 4), plugin.getConfig().getInt("shop.bait_tier3", 200)));
+        inv.setItem(10, addPriceLore(GFItems.createBait(1, 8), resolveShopPrice(GFItems.TYPE_BAIT, plugin.getConfig().getInt("shop.bait_tier1", 20))));
+        inv.setItem(11, addPriceLore(GFItems.createBait(2, 8), resolveShopPrice(GFItems.TYPE_BAIT, plugin.getConfig().getInt("shop.bait_tier2", 75))));
+        inv.setItem(12, addPriceLore(GFItems.createBait(3, 4), resolveShopPrice(GFItems.TYPE_BAIT, plugin.getConfig().getInt("shop.bait_tier3", 200))));
 
-        inv.setItem(14, addPriceLore(GFItems.createRodUpgradePower(), plugin.getConfig().getInt("shop.rod_power_upgrade", 250)));
-        inv.setItem(15, addPriceLore(GFItems.createRodUpgradeLuck(), plugin.getConfig().getInt("shop.rod_luck_upgrade", 250)));
+        inv.setItem(14, addPriceLore(GFItems.createRodUpgradePower(), resolveShopPrice(GFItems.TYPE_ROD_POWER, plugin.getConfig().getInt("shop.rod_power_upgrade", 250))));
+        inv.setItem(15, addPriceLore(GFItems.createRodUpgradeLuck(), resolveShopPrice(GFItems.TYPE_ROD_LUCK, plugin.getConfig().getInt("shop.rod_luck_upgrade", 250))));
 
-        inv.setItem(16, addPriceLore(GFItems.createQuotaReducer(plugin.getConfig().getInt("quota_reduce_amount", 10)), plugin.getConfig().getInt("shop.quota_reduce_item", 300)));
-        inv.setItem(19, addPriceLore(GFItems.createFishingWindowBoost(plugin.getConfig().getInt("upgrades.window_bonus_ms", 450)), plugin.getConfig().getInt("shop.window_boost", 220)));
-        inv.setItem(20, addPriceLore(GFItems.createCatchBonus(plugin.getConfig().getInt("upgrades.catch_bonus_percent", 12)), plugin.getConfig().getInt("shop.catch_bonus", 260)));
-        inv.setItem(21, addPriceLore(GFItems.createPullCooldownBoost(plugin.getConfig().getInt("upgrades.pull_cooldown_reduction_ms", 30)), plugin.getConfig().getInt("shop.pull_cooldown_boost", 200)));
-        inv.setItem(22, addPriceLore(GFItems.createPullReductionBoost(plugin.getConfig().getInt("upgrades.pull_reduction", 1)), plugin.getConfig().getInt("shop.pull_reduction_boost", 240)));
-        inv.setItem(23, addPriceLore(GFItems.createCampfireRecall(), plugin.getConfig().getInt("shop.campfire_recall", 120)));
-        inv.setItem(24, addPriceLore(GFItems.createAmuletSilence(), plugin.getConfig().getInt("shop.amulet_silence", 180)));
+        inv.setItem(16, addPriceLore(GFItems.createQuotaReducer(plugin.getConfig().getInt("quota_reduce_amount", 10)), resolveShopPrice(GFItems.TYPE_QUOTA_REDUCER, plugin.getConfig().getInt("shop.quota_reduce_item", 300))));
+        inv.setItem(19, addPriceLore(GFItems.createFishingWindowBoost(plugin.getConfig().getInt("upgrades.window_bonus_ms", 450)), resolveShopPrice(GFItems.TYPE_WINDOW_BOOST, plugin.getConfig().getInt("shop.window_boost", 220))));
+        inv.setItem(20, addPriceLore(GFItems.createCatchBonus(plugin.getConfig().getInt("upgrades.catch_bonus_percent", 12)), resolveShopPrice(GFItems.TYPE_CATCH_BONUS, plugin.getConfig().getInt("shop.catch_bonus", 260))));
+        inv.setItem(21, addPriceLore(GFItems.createPullCooldownBoost(plugin.getConfig().getInt("upgrades.pull_cooldown_reduction_ms", 30)), resolveShopPrice(GFItems.TYPE_PULL_COOLDOWN, plugin.getConfig().getInt("shop.pull_cooldown_boost", 200))));
+        inv.setItem(22, addPriceLore(GFItems.createPullReductionBoost(plugin.getConfig().getInt("upgrades.pull_reduction", 1)), resolveShopPrice(GFItems.TYPE_PULL_REDUCTION, plugin.getConfig().getInt("shop.pull_reduction_boost", 240))));
+        inv.setItem(23, addPriceLore(GFItems.createCampfireRecall(), resolveShopPrice(GFItems.TYPE_CAMPFIRE_RECALL, plugin.getConfig().getInt("shop.campfire_recall", 120))));
+        inv.setItem(24, addPriceLore(GFItems.createAmuletSilence(), resolveShopPrice(GFItems.TYPE_AMULET_SILENCE, plugin.getConfig().getInt("shop.amulet_silence", 180))));
 
         return inv;
     }
@@ -626,6 +751,15 @@ public final class GFManager implements Listener {
         meta.getPersistentDataContainer().set(new org.bukkit.NamespacedKey(plugin, "shop_price"), PersistentDataType.INTEGER, price);
         it.setItemMeta(meta);
         return it;
+    }
+
+    private int resolveShopPrice(String type, int basePrice) {
+        if (!UPGRADE_TYPES.contains(type)) {
+            return basePrice;
+        }
+        int count = upgradePurchaseCounts.getOrDefault(type, 0);
+        double percent = plugin.getConfig().getDouble("shop.upgrade_price_increase_percent", 20.0);
+        return (int) Math.ceil(basePrice * (1.0 + (count * percent / 100.0)));
     }
 
     // === Events ===
@@ -694,6 +828,13 @@ public final class GFManager implements Listener {
         player.getInventory().addItem(give);
         player.sendMessage(Text.ok("Покупка успешна (-" + price + " фишек)."));
         player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_YES, 1f, 1.2f);
+
+        String type = GFItems.getType(clicked);
+        if (type != null && UPGRADE_TYPES.contains(type)) {
+            upgradePurchaseCounts.put(type, upgradePurchaseCounts.getOrDefault(type, 0) + 1);
+            save();
+            player.openInventory(createShopInventory());
+        }
     }
 
     @EventHandler

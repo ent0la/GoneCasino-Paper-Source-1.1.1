@@ -13,6 +13,9 @@ commands:
   casino:
     description: Main command for GoneCasino
     usage: /casino
+  kit:
+    description: Starter kit command
+    usage: /kit start
 
 permissions:
   gonecasino.admin:

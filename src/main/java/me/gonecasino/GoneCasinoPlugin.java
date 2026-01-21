@@ -3,6 +3,7 @@ package me.gonecasino;
 import me.gonecasino.casino.CasinoCommand;
 import me.gonecasino.casino.TableManager;
 import me.gonecasino.gf.GFManager;
+import me.gonecasino.gf.KitCommand;
 import me.gonecasino.util.ChipBank;
 import me.gonecasino.util.Keys;
 import org.bukkit.Bukkit;
@@ -33,6 +34,9 @@ public final class GoneCasinoPlugin extends JavaPlugin {
         var casinoCmd = new CasinoCommand(this);
         getCommand("casino").setExecutor(casinoCmd);
         getCommand("casino").setTabCompleter(casinoCmd);
+        var kitCmd = new KitCommand(this);
+        getCommand("kit").setExecutor(kitCmd);
+        getCommand("kit").setTabCompleter(kitCmd);
 
         // Register listeners
         Bukkit.getPluginManager().registerEvents(tableManager, this);

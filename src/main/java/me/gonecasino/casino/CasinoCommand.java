@@ -35,6 +35,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
             player.sendMessage(Text.info("/casino gf join|leave|start|stop|status"));
             if (player.hasPermission("gonecasino.admin")) {
                 player.sendMessage(Text.info("/casino setaltar"));
+                player.sendMessage(Text.info("/casino delaltar"));
                 player.sendMessage(Text.info("/casino settable <SLOT>"));
                 player.sendMessage(Text.info("/casino deltable"));
             }
@@ -101,6 +102,23 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
                 }
                 plugin.gf().setAltar(b.getLocation());
                 player.sendMessage(Text.ok("Алтарь установлен: " + b.getX() + " " + b.getY() + " " + b.getZ()));
+                return true;
+            }
+            case "delaltar" -> {
+                if (!player.hasPermission("gonecasino.admin")) {
+                    player.sendMessage(Text.bad("Нет прав."));
+                    return true;
+                }
+                Block b = player.getTargetBlockExact(6);
+                if (b == null) {
+                    player.sendMessage(Text.bad("Посмотрите на блок (до 6 блоков)."));
+                    return true;
+                }
+                if (!plugin.gf().clearAltar(b)) {
+                    player.sendMessage(Text.bad("Алтарь не найден."));
+                    return true;
+                }
+                player.sendMessage(Text.ok("Алтарь и дом удалены."));
                 return true;
             }
             case "settable" -> {
@@ -185,7 +203,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String label, String[] args) {
         if (args.length == 1) {
-            return prefix(args[0], Arrays.asList("balance", "pay", "givechips", "gf", "setaltar", "settable", "deltable"));
+            return prefix(args[0], Arrays.asList("balance", "pay", "givechips", "gf", "setaltar", "delaltar", "settable", "deltable"));
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("gf")) {
             return prefix(args[1], Arrays.asList("join", "leave", "start", "stop", "status"));
