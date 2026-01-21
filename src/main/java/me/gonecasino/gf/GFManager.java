@@ -1274,6 +1274,10 @@ public final class GFManager implements Listener {
         );
         challenges.put(p.getUniqueId(), ch);
 
+        String inputMode = plugin.getConfig().getString("fishing.input_mode", "click");
+        Component instruction = "hold".equalsIgnoreCase(inputMode)
+                ? Component.text("Удерживай ▲ в зоне рыбы", NamedTextColor.YELLOW)
+                : Component.text("Жми ▲ в зоне рыбы", NamedTextColor.YELLOW);
         p.showTitle(Title.title(
                 Component.text("🎣 Поединок с рыбой!", NamedTextColor.AQUA),
                 Component.text("Накликай " + requiredClicks + " раз и подтверди ПКМ", NamedTextColor.YELLOW),
