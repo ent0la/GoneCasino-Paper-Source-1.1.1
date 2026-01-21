@@ -35,7 +35,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
             player.sendMessage(Text.info("/casino gf join|leave|start|stop|status"));
             if (player.hasPermission("gonecasino.admin")) {
                 player.sendMessage(Text.info("/casino setaltar"));
-                player.sendMessage(Text.info("/casino settable <POKER|SLOT>"));
+                player.sendMessage(Text.info("/casino settable <SLOT>"));
                 player.sendMessage(Text.info("/casino deltable"));
             }
             return true;
@@ -46,7 +46,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
         switch (sub) {
             case "balance" -> {
                 if (!plugin.bank().isAvailable()) {
-                    player.sendMessage(Text.bad("Экономика недоступна (Vault)."));
+                    player.sendMessage(Text.bad("Экономика недоступна (Vault/EssentialsX)."));
                     return true;
                 }
                 int bal = (int) Math.floor(plugin.bank().getBalance());
@@ -55,7 +55,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
             }
             case "pay" -> {
                 if (!plugin.bank().isAvailable()) {
-                    player.sendMessage(Text.bad("Экономика недоступна (Vault)."));
+                    player.sendMessage(Text.bad("Экономика недоступна (Vault/EssentialsX)."));
                     return true;
                 }
                 player.sendMessage(Text.info("Фишки общие для всех игроков. Переводы не требуются."));
@@ -82,7 +82,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
                     return true;
                 }
                 if (!plugin.bank().isAvailable()) {
-                    player.sendMessage(Text.bad("Экономика недоступна (Vault)."));
+                    player.sendMessage(Text.bad("Экономика недоступна (Vault/EssentialsX)."));
                     return true;
                 }
                 plugin.bank().give(amount);
@@ -109,14 +109,14 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
                     return true;
                 }
                 if (args.length < 2) {
-                    player.sendMessage(Text.bad("Использование: /casino settable <POKER|SLOT>"));
+                    player.sendMessage(Text.bad("Использование: /casino settable <SLOT>"));
                     return true;
                 }
                 TableType type;
                 try {
                     type = TableType.valueOf(args[1].toUpperCase());
                 } catch (IllegalArgumentException e) {
-                    player.sendMessage(Text.bad("Тип должен быть POKER или SLOT"));
+                    player.sendMessage(Text.bad("Тип должен быть SLOT"));
                     return true;
                 }
                 Block b = player.getTargetBlockExact(6);
@@ -155,7 +155,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
                 }
                 String a = args[1].toLowerCase();
                 switch (a) {
-                    case "join" -> plugin.gf().join(player);
+                    case "join" -> plugin.gf().joinAll(player);
                     case "leave" -> plugin.gf().leave(player);
                     case "start" -> {
                         if (!player.hasPermission("gonecasino.admin")) {
@@ -191,7 +191,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
             return prefix(args[1], Arrays.asList("join", "leave", "start", "stop", "status"));
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("settable")) {
-            return prefix(args[1], Arrays.asList("POKER", "SLOT"));
+            return prefix(args[1], List.of("SLOT"));
         }
         return List.of();
     }

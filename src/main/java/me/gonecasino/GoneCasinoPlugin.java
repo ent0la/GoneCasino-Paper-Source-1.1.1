@@ -1,7 +1,6 @@
 package me.gonecasino;
 
 import me.gonecasino.casino.CasinoCommand;
-import me.gonecasino.casino.PokerCommand;
 import me.gonecasino.casino.TableManager;
 import me.gonecasino.gf.GFManager;
 import me.gonecasino.util.ChipBank;
@@ -34,10 +33,6 @@ public final class GoneCasinoPlugin extends JavaPlugin {
         var casinoCmd = new CasinoCommand(this);
         getCommand("casino").setExecutor(casinoCmd);
         getCommand("casino").setTabCompleter(casinoCmd);
-
-        var pokerCmd = new PokerCommand(this);
-        getCommand("poker").setExecutor(pokerCmd);
-        getCommand("poker").setTabCompleter(pokerCmd);
 
         // Register listeners
         Bukkit.getPluginManager().registerEvents(tableManager, this);

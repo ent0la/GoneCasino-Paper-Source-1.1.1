@@ -30,6 +30,14 @@ public final class ChipBank {
         }
 
         this.economy = rsp.getProvider();
+        if (economy != null) {
+            String provider = economy.getName();
+            if (provider != null && provider.toLowerCase().contains("essentials")) {
+                plugin.getLogger().info("Экономика подключена через EssentialsX (Vault).");
+            } else {
+                plugin.getLogger().info("Экономика подключена через Vault: " + provider);
+            }
+        }
         this.bankName = plugin.getConfig().getString("economy.bank_name", "gonecasino");
         this.bankSupported = economy.hasBankSupport();
         if (bankSupported) {

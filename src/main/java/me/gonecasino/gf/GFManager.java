@@ -95,6 +95,17 @@ public final class GFManager implements Listener {
 
     private final Random random = new Random();
 
+    private Component fishingActionBar(int pullsDone, int requiredPulls) {
+        int total = Math.max(1, requiredPulls);
+        int filled = (int) Math.round((double) pullsDone / total * 10.0);
+        filled = Math.max(0, Math.min(10, filled));
+        String bar = "■".repeat(filled) + "□".repeat(10 - filled);
+        return Component.text("🎣 ", NamedTextColor.AQUA)
+                .append(Component.text("Рыба на крючке ", NamedTextColor.YELLOW))
+                .append(Component.text(bar + " ", NamedTextColor.GOLD))
+                .append(Component.text(pullsDone + "/" + requiredPulls, NamedTextColor.GRAY));
+    }
+
     public GFManager(GoneCasinoPlugin plugin) {
         this.plugin = plugin;
         this.file = new File(plugin.getDataFolder(), "gf.yml");
@@ -168,13 +179,25 @@ public final class GFManager implements Listener {
             p.sendMessage(Text.info("Вы уже в игре."));
             return;
         }
-        if (players.size() >= 4) {
-            p.sendMessage(Text.bad("Лимит игроков: 4"));
+        players.add(p.getUniqueId());
+        p.sendMessage(Text.ok("Вы вошли в GONE Fishing. Игроков: " + players.size()));
+        if (bossBar != null) bossBar.addPlayer(p);
+    }
+
+    public void joinAll(Player requester) {
+        if (!running) {
+            requester.sendMessage(Text.bad("Режим GONE Fishing сейчас не запущен. Попросите админа: /casino gf start"));
             return;
         }
-        players.add(p.getUniqueId());
-        p.sendMessage(Text.ok("Вы вошли в GONE Fishing. Игроков: " + players.size() + "/4"));
-        if (bossBar != null) bossBar.addPlayer(p);
+        int joined = 0;
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            if (players.add(online.getUniqueId())) {
+                joined++;
+                online.sendMessage(Text.ok("Вы вошли в GONE Fishing."));
+                if (bossBar != null) bossBar.addPlayer(online);
+            }
+        }
+        requester.sendMessage(Text.ok("Подключено игроков: " + joined));
     }
 
     public void leave(Player p) {
@@ -238,6 +261,11 @@ public final class GFManager implements Listener {
         if (running) {
             p.sendMessage(Text.info("День: " + day + (isNight ? " (ночь)" : " (день)")));
             p.sendMessage(Text.info("Квота: " + quotaProgress + "/" + quotaRequired + (quotaMet ? " (закрыто)" : "")));
+            p.sendMessage(Text.info("Общие улучшения: сила удочки +" + sharedRodPower
+                    + ", удача удочки +" + sharedRodLuck
+                    + ", окно +" + sharedWindowBonusMs + "мс"
+                    + ", ценность x" + DF.format(sharedValueMultiplier)
+                    + ", очки x" + DF.format(sharedPointsMultiplier)));
         }
     }
 
@@ -564,7 +592,7 @@ public final class GFManager implements Listener {
             FishData fish = GFItems.readFish(fishItem);
             if (fish != null) {
                 if (!plugin.bank().isAvailable()) {
-                    p.sendMessage(Text.bad("Экономика недоступна (Vault)."));
+                    p.sendMessage(Text.bad("Экономика недоступна (Vault/EssentialsX)."));
                     return;
                 }
                 int value = fish.value();
@@ -745,6 +773,10 @@ public final class GFManager implements Listener {
                     p.sendMessage(Text.bad("Алтарь принимает только особую рыбу (из режима)."));
                     return;
                 }
+                if (quotaMet) {
+                    p.sendMessage(Text.bad("Квота уже закрыта. Алтарь больше не принимает рыбу."));
+                    return;
+                }
                 FishData fish = GFItems.readFish(hand);
                 if (fish == null) return;
 
@@ -836,10 +868,10 @@ public final class GFManager implements Listener {
                     ch.pullsDone++;
                     if (ch.pullsDone >= ch.requiredPulls) {
                         ch.completed = true;
-                        p.sendActionBar(Component.text("Готово! ПКМ чтобы вытащить", NamedTextColor.GREEN));
+                        p.sendActionBar(Component.text("✨ Рыба готова! ПКМ чтобы вытащить", NamedTextColor.GREEN));
                         p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 0.5f, 1.3f);
                     } else {
-                        p.sendActionBar(Component.text("Тяни рыбу: " + ch.pullsDone + "/" + ch.requiredPulls, NamedTextColor.YELLOW));
+                        p.sendActionBar(fishingActionBar(ch.pullsDone, ch.requiredPulls));
                         p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 0.4f, 1.0f);
                     }
                 }
@@ -873,20 +905,23 @@ public final class GFManager implements Listener {
             int minPulls = plugin.getConfig().getInt("fishing.min_pulls", 2);
             int maxPulls = plugin.getConfig().getInt("fishing.max_pulls", 12);
             double w2p = plugin.getConfig().getDouble("fishing.weight_to_pulls", 0.55);
+            int basePulls = plugin.getConfig().getInt("fishing.base_pulls", 1);
 
-            int req = (int) Math.round(minPulls + fish.weightKg() * w2p);
+            int req = (int) Math.round(basePulls + minPulls + fish.weightKg() * w2p);
             req = Math.max(minPulls, Math.min(maxPulls, req));
             req = Math.max(1, req - rodPower); // power reduces needed tugs
 
             int baseWindow = plugin.getConfig().getInt("fishing.base_window_ms", 3500);
             double w2w = plugin.getConfig().getDouble("fishing.weight_to_window_ms", 85);
-            long window = (long) (baseWindow - fish.weightKg() * w2w + rodPower * 250L + sharedWindowBonusMs);
-            window = Math.max(1600L, Math.min(6500L, window));
+            long window = (long) (baseWindow - fish.weightKg() * w2w + rodPower * 220L + sharedWindowBonusMs);
+            long minWindow = plugin.getConfig().getLong("fishing.min_window_ms", 2600L);
+            long maxWindow = plugin.getConfig().getLong("fishing.max_window_ms", 9000L);
+            window = Math.max(minWindow, Math.min(maxWindow, window));
 
             FishingChallenge ch = new FishingChallenge(fish, req, 0, System.currentTimeMillis() + window, false, 0L);
             challenges.put(p.getUniqueId(), ch);
 
-            p.sendActionBar(Component.text("Клюёт! ЛКМ тянуть: 0/" + req, NamedTextColor.YELLOW));
+            p.sendActionBar(fishingActionBar(0, req));
             return;
         }
 
@@ -912,15 +947,15 @@ public final class GFManager implements Listener {
                 p.getWorld().dropItemNaturally(p.getLocation(), custom);
             }
 
-            p.sendMessage(Component.text("Вы поймали: ", NamedTextColor.YELLOW)
+            p.sendMessage(Component.text("🎉 Улов: ", NamedTextColor.YELLOW)
                     .append(Component.text(ch.fish.speciesName(), ch.fish.rarity().color))
-                    .append(Component.text(" | Вес: " + DF.format(ch.fish.weightKg()) + "кг | Очки: " + ch.fish.points(), NamedTextColor.GRAY))
+                    .append(Component.text(" • Вес: " + DF.format(ch.fish.weightKg()) + "кг • Очки: " + ch.fish.points(), NamedTextColor.GRAY))
             );
             forEachGamePlayer(pp -> {
                 if (pp.getUniqueId().equals(p.getUniqueId())) return;
-                pp.sendMessage(Component.text(p.getName() + " поймал: ", NamedTextColor.AQUA)
+                pp.sendMessage(Component.text("🌊 " + p.getName() + " поймал: ", NamedTextColor.AQUA)
                         .append(Component.text(ch.fish.speciesName(), ch.fish.rarity().color))
-                        .append(Component.text(" | Вес: " + DF.format(ch.fish.weightKg()) + "кг | Очки: " + ch.fish.points(), NamedTextColor.GRAY))
+                        .append(Component.text(" • Вес: " + DF.format(ch.fish.weightKg()) + "кг • Очки: " + ch.fish.points(), NamedTextColor.GRAY))
                 );
             });
             p.playSound(p.getLocation(), Sound.ENTITY_FISH_SWIM, 0.8f, 1.2f);
@@ -977,6 +1012,15 @@ public final class GFManager implements Listener {
         else if (roll >= 95) rarity = FishRarity.RARE;
         else if (roll >= 75) rarity = FishRarity.UNCOMMON;
         else rarity = FishRarity.COMMON;
+
+        FishRarity minRarity = switch (baitTier) {
+            case 3 -> FishRarity.RARE;
+            case 2 -> FishRarity.UNCOMMON;
+            default -> FishRarity.COMMON;
+        };
+        if (rarity.ordinal() < minRarity.ordinal()) {
+            rarity = minRarity;
+        }
 
         double minW = switch (rarity) {
             case COMMON -> 0.4;

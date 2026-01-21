@@ -19,7 +19,7 @@ public final class SlotManager {
     public void spin(Player player) {
         int bet = 50;
         if (!plugin.bank().isAvailable()) {
-            player.sendMessage(Text.bad("Экономика недоступна (Vault)."));
+            player.sendMessage(Text.bad("Экономика недоступна (Vault/EssentialsX)."));
             return;
         }
         if (!plugin.bank().take(bet)) {
