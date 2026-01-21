@@ -25,6 +25,7 @@ public final class Keys {
     public static NamespacedKey ROD_LUCK;
 
     public static NamespacedKey ITEM_TYPE;
+    public static NamespacedKey GF_TRADER;
 
     public static void init(Plugin p) {
         plugin = p;
@@ -43,5 +44,6 @@ public final class Keys {
         ROD_LUCK = new NamespacedKey(plugin, "rod_luck");
 
         ITEM_TYPE = new NamespacedKey(plugin, "item_type");
+        GF_TRADER = new NamespacedKey(plugin, "gf_trader");
     }
 }
