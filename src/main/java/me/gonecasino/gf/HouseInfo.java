@@ -6,6 +6,8 @@ import org.bukkit.util.BoundingBox;
 public record HouseInfo(
         Location homeSpawn,
         Location campfire,
-        BoundingBox safeZone
+        BoundingBox safeZone,
+        Location slotMachine,
+        Location starterChest
 ) {
 }

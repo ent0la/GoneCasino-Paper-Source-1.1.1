@@ -4,9 +4,11 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.Chest;
 import org.bukkit.block.data.Bisected;
 import org.bukkit.block.data.type.Bed;
 import org.bukkit.block.data.type.Door;
+import org.bukkit.block.data.type.Slab;
 import org.bukkit.util.BoundingBox;
 
 /**
@@ -31,7 +33,9 @@ public final class HouseBuilder {
         Location home = new Location(world, baseX + 4.5, baseY + 1.0, baseZ + 3.5);
         Location campfireLoc = new Location(world, cx + 0.5, baseY + 1.0, cz + 0.5);
         BoundingBox box = new BoundingBox(baseX, baseY, baseZ, baseX + w, baseY + h + 3, baseZ + l);
-        return new HouseInfo(home, campfireLoc, box);
+        Location slotLoc = new Location(world, baseX + 7, baseY + 1, baseZ + 3);
+        Location chestLoc = new Location(world, baseX + 2, baseY + 1, baseZ + 5);
+        return new HouseInfo(home, campfireLoc, box, slotLoc, chestLoc);
     }
 
     public static HouseInfo build(World world, Location altarBlock, int offsetX, int offsetZ) {
@@ -91,20 +95,52 @@ public final class HouseBuilder {
         // Roof (simple slab roof)
         for (int x = -1; x <= w; x++) {
             for (int z = -1; z <= l; z++) {
-                set(world, baseX + x, baseY + h + 1, baseZ + z, Material.SPRUCE_SLAB);
+                Block roof = world.getBlockAt(baseX + x, baseY + h + 1, baseZ + z);
+                roof.setType(Material.SPRUCE_SLAB, false);
+                Slab slab = (Slab) roof.getBlockData();
+                slab.setType(Slab.Type.TOP);
+                roof.setBlockData(slab, false);
             }
         }
 
-        // Beds (4)
-        placeBed(world, baseX + 2, baseY + 1, baseZ + 2, org.bukkit.block.BlockFace.NORTH);
-        placeBed(world, baseX + 6, baseY + 1, baseZ + 2, org.bukkit.block.BlockFace.NORTH);
-        placeBed(world, baseX + 2, baseY + 1, baseZ + 4, org.bukkit.block.BlockFace.SOUTH);
-        placeBed(world, baseX + 6, baseY + 1, baseZ + 4, org.bukkit.block.BlockFace.SOUTH);
+        // Windows
+        set(world, baseX + 2, baseY + 2, baseZ, Material.GLASS_PANE);
+        set(world, baseX + 6, baseY + 2, baseZ, Material.GLASS_PANE);
+        set(world, baseX + 2, baseY + 2, baseZ + (l - 1), Material.GLASS_PANE);
+        set(world, baseX + 6, baseY + 2, baseZ + (l - 1), Material.GLASS_PANE);
+        set(world, baseX, baseY + 2, baseZ + 2, Material.GLASS_PANE);
+        set(world, baseX, baseY + 2, baseZ + 4, Material.GLASS_PANE);
+        set(world, baseX + (w - 1), baseY + 2, baseZ + 2, Material.GLASS_PANE);
+        set(world, baseX + (w - 1), baseY + 2, baseZ + 4, Material.GLASS_PANE);
+
+        // Beds (4) - corners
+        placeBed(world, baseX + 1, baseY + 1, baseZ + 2, org.bukkit.block.BlockFace.SOUTH);
+        placeBed(world, baseX + 7, baseY + 1, baseZ + 2, org.bukkit.block.BlockFace.SOUTH);
+        placeBed(world, baseX + 1, baseY + 1, baseZ + 4, org.bukkit.block.BlockFace.NORTH);
+        placeBed(world, baseX + 7, baseY + 1, baseZ + 4, org.bukkit.block.BlockFace.NORTH);
 
         // Campfire
         int cx = baseX + 4;
         int cz = baseZ + 3;
         set(world, cx, baseY + 1, cz, Material.CAMPFIRE);
+
+        // Slot machine
+        set(world, baseX + 7, baseY + 1, baseZ + 3, Material.DISPENSER);
+        set(world, baseX + 7, baseY + 2, baseZ + 3, Material.REDSTONE_LAMP);
+
+        // Starter chest with rods + bait
+        Block chestBlock = world.getBlockAt(baseX + 2, baseY + 1, baseZ + 5);
+        chestBlock.setType(Material.CHEST, false);
+        if (chestBlock.getState() instanceof Chest chest) {
+            chest.getInventory().clear();
+            for (int i = 0; i < 4; i++) {
+                chest.getInventory().addItem(GFItems.createStarterRod());
+            }
+            for (int i = 0; i < 4; i++) {
+                chest.getInventory().addItem(GFItems.createBait(1, 2));
+            }
+            chest.update();
+        }
 
         return info;
     }

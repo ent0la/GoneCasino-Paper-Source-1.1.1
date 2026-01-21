@@ -22,6 +22,9 @@ fishing:
   # Hard caps for the pull window
   min_window_ms: 3200
   max_window_ms: 11000
+  # Perfect catch bonus
+  perfect_threshold: 0.35
+  perfect_bonus_percent: 15
 
 # Night-only fish settings (only with top bait)
 night_fish:
@@ -53,6 +56,8 @@ shop:
   quota_reduce_item: 300
   window_boost: 220
   catch_bonus: 260
+  pull_cooldown_boost: 200
+  pull_reduction_boost: 240
   campfire_recall: 120
   amulet_silence: 180
 
@@ -65,6 +70,10 @@ upgrades:
   max_window_bonus_ms: 2400
   catch_bonus_percent: 12
   max_catch_multiplier: 2.5
+  pull_cooldown_reduction_ms: 30
+  max_pull_cooldown_reduction_ms: 140
+  pull_reduction: 1
+  max_pull_reduction: 4
   max_team_power: 6
   max_team_luck: 6
 

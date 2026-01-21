@@ -30,6 +30,9 @@ public final class GFItems {
     public static final String TYPE_AMULET_SILENCE = "amulet_silence";
     public static final String TYPE_WINDOW_BOOST = "window_boost";
     public static final String TYPE_CATCH_BONUS = "catch_bonus";
+    public static final String TYPE_PULL_COOLDOWN = "pull_cooldown";
+    public static final String TYPE_PULL_REDUCTION = "pull_reduction";
+    public static final String TYPE_STARTER_ROD = "starter_rod";
 
     public static ItemStack createBait(int tier, int amount) {
         Material mat = switch (tier) {
@@ -53,6 +56,20 @@ public final class GFItems {
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         pdc.set(Keys.ITEM_TYPE, PersistentDataType.STRING, TYPE_BAIT);
         pdc.set(Keys.BAIT_TIER, PersistentDataType.INTEGER, tier);
+        it.setItemMeta(meta);
+        return it;
+    }
+
+    public static ItemStack createStarterRod() {
+        ItemStack it = new ItemStack(Material.FISHING_ROD, 1);
+        ItemMeta meta = it.getItemMeta();
+        meta.displayName(Component.text("Стартовая удочка", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
+        meta.lore(List.of(
+                Component.text("Командные улучшения отображаются", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                Component.text("после покупки у торговца.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+        ));
+        meta.getPersistentDataContainer().set(Keys.ITEM_TYPE, PersistentDataType.STRING, TYPE_STARTER_ROD);
+        meta.getPersistentDataContainer().set(Keys.STARTER_ROD, PersistentDataType.BYTE, (byte) 1);
         it.setItemMeta(meta);
         return it;
     }
@@ -133,6 +150,32 @@ public final class GFItems {
                 Component.text("+" + percent + "% для всей команды", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
         ));
         meta.getPersistentDataContainer().set(Keys.ITEM_TYPE, PersistentDataType.STRING, TYPE_CATCH_BONUS);
+        it.setItemMeta(meta);
+        return it;
+    }
+
+    public static ItemStack createPullCooldownBoost(int bonusMs) {
+        ItemStack it = new ItemStack(Material.RABBIT_FOOT, 1);
+        ItemMeta meta = it.getItemMeta();
+        meta.displayName(Component.text("Ритуал: Быстрый рывок", NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false));
+        meta.lore(List.of(
+                Component.text("ПКМ: уменьшает задержку рывков", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                Component.text("на " + bonusMs + " мс для всех", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+        ));
+        meta.getPersistentDataContainer().set(Keys.ITEM_TYPE, PersistentDataType.STRING, TYPE_PULL_COOLDOWN);
+        it.setItemMeta(meta);
+        return it;
+    }
+
+    public static ItemStack createPullReductionBoost(int amount) {
+        ItemStack it = new ItemStack(Material.STRING, 1);
+        ItemMeta meta = it.getItemMeta();
+        meta.displayName(Component.text("Ритуал: Крепкая леска", NamedTextColor.GREEN).decoration(TextDecoration.ITALIC, false));
+        meta.lore(List.of(
+                Component.text("ПКМ: снижает сложность вываживания", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                Component.text("на " + amount + " рывка для команды", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+        ));
+        meta.getPersistentDataContainer().set(Keys.ITEM_TYPE, PersistentDataType.STRING, TYPE_PULL_REDUCTION);
         it.setItemMeta(meta);
         return it;
     }
@@ -238,6 +281,40 @@ public final class GFItems {
         ItemMeta meta = it.getItemMeta();
         if (meta == null) return null;
         return meta.getPersistentDataContainer().get(Keys.ITEM_TYPE, PersistentDataType.STRING);
+    }
+
+    public static boolean isStarterRod(ItemStack rod) {
+        if (rod == null || rod.getType() != Material.FISHING_ROD) return false;
+        ItemMeta meta = rod.getItemMeta();
+        if (meta == null) return false;
+        Byte v = meta.getPersistentDataContainer().get(Keys.STARTER_ROD, PersistentDataType.BYTE);
+        return v != null && v == (byte) 1;
+    }
+
+    public static void updateStarterRod(ItemStack rod, int sharedPower, int sharedLuck) {
+        if (!isStarterRod(rod)) return;
+        ItemMeta meta = rod.getItemMeta();
+        if (meta == null) return;
+
+        meta.displayName(Component.text("Стартовая удочка", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
+        List<Component> lore = new ArrayList<>();
+        lore.add(Component.text("Командные улучшения:", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+        lore.add(Component.text("Сила: +" + sharedPower, NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+        lore.add(Component.text("Удача: +" + sharedLuck, NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+        if (sharedPower == 0 && sharedLuck == 0) {
+            lore.add(Component.text("Пока без улучшений.", NamedTextColor.DARK_GRAY).decoration(TextDecoration.ITALIC, false));
+        }
+        meta.lore(lore);
+
+        meta.getEnchants().keySet().forEach(meta::removeEnchant);
+        if (sharedPower > 0) {
+            meta.addEnchant(Enchantment.LURE, Math.min(3, sharedPower), true);
+        }
+        if (sharedLuck > 0) {
+            meta.addEnchant(Enchantment.LUCK, Math.min(3, sharedLuck), true);
+        }
+        meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+        rod.setItemMeta(meta);
     }
 
     public static int getRodPower(ItemStack rod) {
