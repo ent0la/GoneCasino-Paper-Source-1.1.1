@@ -8,15 +8,20 @@ quota:
 # Fishing challenge tuning
 fishing:
   # Minimum and maximum pulls required (before rod power reduction)
-  min_pulls: 3
-  max_pulls: 18
+  min_pulls: 2
+  max_pulls: 12
+  # Flat pulls added to every fish (helps make early fish easier)
+  base_pulls: 0
   # Base time window in milliseconds
-  base_window_ms: 7200
+  base_window_ms: 7600
   # How much weight increases difficulty
-  weight_to_pulls: 0.7
-  weight_to_window_ms: 45
+  weight_to_pulls: 0.45
+  weight_to_window_ms: 30
   # Minimum delay between pull clicks
-  pull_cooldown_ms: 240
+  pull_cooldown_ms: 180
+  # Hard caps for the pull window
+  min_window_ms: 3200
+  max_window_ms: 11000
 
 # Night-only fish settings (only with top bait)
 night_fish:

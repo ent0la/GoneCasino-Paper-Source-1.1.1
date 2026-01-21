@@ -46,7 +46,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
         switch (sub) {
             case "balance" -> {
                 if (!plugin.bank().isAvailable()) {
-                    player.sendMessage(Text.bad("Экономика недоступна (Vault)."));
+                    player.sendMessage(Text.bad("Экономика недоступна (Vault/EssentialsX)."));
                     return true;
                 }
                 int bal = (int) Math.floor(plugin.bank().getBalance());
@@ -55,7 +55,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
             }
             case "pay" -> {
                 if (!plugin.bank().isAvailable()) {
-                    player.sendMessage(Text.bad("Экономика недоступна (Vault)."));
+                    player.sendMessage(Text.bad("Экономика недоступна (Vault/EssentialsX)."));
                     return true;
                 }
                 player.sendMessage(Text.info("Фишки общие для всех игроков. Переводы не требуются."));
@@ -82,7 +82,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
                     return true;
                 }
                 if (!plugin.bank().isAvailable()) {
-                    player.sendMessage(Text.bad("Экономика недоступна (Vault)."));
+                    player.sendMessage(Text.bad("Экономика недоступна (Vault/EssentialsX)."));
                     return true;
                 }
                 plugin.bank().give(amount);
@@ -155,7 +155,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
                 }
                 String a = args[1].toLowerCase();
                 switch (a) {
-                    case "join" -> plugin.gf().join(player);
+                    case "join" -> plugin.gf().joinAll(player);
                     case "leave" -> plugin.gf().leave(player);
                     case "start" -> {
                         if (!player.hasPermission("gonecasino.admin")) {

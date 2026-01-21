@@ -179,13 +179,25 @@ public final class GFManager implements Listener {
             p.sendMessage(Text.info("Вы уже в игре."));
             return;
         }
-        if (players.size() >= 4) {
-            p.sendMessage(Text.bad("Лимит игроков: 4"));
+        players.add(p.getUniqueId());
+        p.sendMessage(Text.ok("Вы вошли в GONE Fishing. Игроков: " + players.size()));
+        if (bossBar != null) bossBar.addPlayer(p);
+    }
+
+    public void joinAll(Player requester) {
+        if (!running) {
+            requester.sendMessage(Text.bad("Режим GONE Fishing сейчас не запущен. Попросите админа: /casino gf start"));
             return;
         }
-        players.add(p.getUniqueId());
-        p.sendMessage(Text.ok("Вы вошли в GONE Fishing. Игроков: " + players.size() + "/4"));
-        if (bossBar != null) bossBar.addPlayer(p);
+        int joined = 0;
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            if (players.add(online.getUniqueId())) {
+                joined++;
+                online.sendMessage(Text.ok("Вы вошли в GONE Fishing."));
+                if (bossBar != null) bossBar.addPlayer(online);
+            }
+        }
+        requester.sendMessage(Text.ok("Подключено игроков: " + joined));
     }
 
     public void leave(Player p) {
@@ -249,6 +261,11 @@ public final class GFManager implements Listener {
         if (running) {
             p.sendMessage(Text.info("День: " + day + (isNight ? " (ночь)" : " (день)")));
             p.sendMessage(Text.info("Квота: " + quotaProgress + "/" + quotaRequired + (quotaMet ? " (закрыто)" : "")));
+            p.sendMessage(Text.info("Общие улучшения: сила удочки +" + sharedRodPower
+                    + ", удача удочки +" + sharedRodLuck
+                    + ", окно +" + sharedWindowBonusMs + "мс"
+                    + ", ценность x" + DF.format(sharedValueMultiplier)
+                    + ", очки x" + DF.format(sharedPointsMultiplier)));
         }
     }
 
@@ -575,7 +592,7 @@ public final class GFManager implements Listener {
             FishData fish = GFItems.readFish(fishItem);
             if (fish != null) {
                 if (!plugin.bank().isAvailable()) {
-                    p.sendMessage(Text.bad("Экономика недоступна (Vault)."));
+                    p.sendMessage(Text.bad("Экономика недоступна (Vault/EssentialsX)."));
                     return;
                 }
                 int value = fish.value();
@@ -756,6 +773,10 @@ public final class GFManager implements Listener {
                     p.sendMessage(Text.bad("Алтарь принимает только особую рыбу (из режима)."));
                     return;
                 }
+                if (quotaMet) {
+                    p.sendMessage(Text.bad("Квота уже закрыта. Алтарь больше не принимает рыбу."));
+                    return;
+                }
                 FishData fish = GFItems.readFish(hand);
                 if (fish == null) return;
 
@@ -884,15 +905,18 @@ public final class GFManager implements Listener {
             int minPulls = plugin.getConfig().getInt("fishing.min_pulls", 2);
             int maxPulls = plugin.getConfig().getInt("fishing.max_pulls", 12);
             double w2p = plugin.getConfig().getDouble("fishing.weight_to_pulls", 0.55);
+            int basePulls = plugin.getConfig().getInt("fishing.base_pulls", 1);
 
-            int req = (int) Math.round(minPulls + fish.weightKg() * w2p);
+            int req = (int) Math.round(basePulls + minPulls + fish.weightKg() * w2p);
             req = Math.max(minPulls, Math.min(maxPulls, req));
             req = Math.max(1, req - rodPower); // power reduces needed tugs
 
             int baseWindow = plugin.getConfig().getInt("fishing.base_window_ms", 3500);
             double w2w = plugin.getConfig().getDouble("fishing.weight_to_window_ms", 85);
-            long window = (long) (baseWindow - fish.weightKg() * w2w + rodPower * 300L + sharedWindowBonusMs);
-            window = Math.max(2500L, Math.min(9000L, window));
+            long window = (long) (baseWindow - fish.weightKg() * w2w + rodPower * 220L + sharedWindowBonusMs);
+            long minWindow = plugin.getConfig().getLong("fishing.min_window_ms", 2600L);
+            long maxWindow = plugin.getConfig().getLong("fishing.max_window_ms", 9000L);
+            window = Math.max(minWindow, Math.min(maxWindow, window));
 
             FishingChallenge ch = new FishingChallenge(fish, req, 0, System.currentTimeMillis() + window, false, 0L);
             challenges.put(p.getUniqueId(), ch);
@@ -988,6 +1012,15 @@ public final class GFManager implements Listener {
         else if (roll >= 95) rarity = FishRarity.RARE;
         else if (roll >= 75) rarity = FishRarity.UNCOMMON;
         else rarity = FishRarity.COMMON;
+
+        FishRarity minRarity = switch (baitTier) {
+            case 3 -> FishRarity.RARE;
+            case 2 -> FishRarity.UNCOMMON;
+            default -> FishRarity.COMMON;
+        };
+        if (rarity.ordinal() < minRarity.ordinal()) {
+            rarity = minRarity;
+        }
 
         double minW = switch (rarity) {
             case COMMON -> 0.4;
