@@ -2,6 +2,7 @@ package me.gonecasino.gf;
 
 public record FishData(
         FishRarity rarity,
+        FishQuality quality,
         double weightKg,
         int points,
         int value,
