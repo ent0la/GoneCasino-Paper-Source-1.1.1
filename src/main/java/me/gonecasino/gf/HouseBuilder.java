@@ -132,9 +132,7 @@ public final class HouseBuilder {
             for (int i = 0; i < 4; i++) {
                 chest.getInventory().addItem(GFItems.createStarterRod());
             }
-            for (int i = 0; i < 4; i++) {
-                chest.getInventory().addItem(GFItems.createBait(1, 2));
-            }
+            chest.getInventory().addItem(GFItems.createBait(1, 8));
             chest.update(true, false);
         }
 
