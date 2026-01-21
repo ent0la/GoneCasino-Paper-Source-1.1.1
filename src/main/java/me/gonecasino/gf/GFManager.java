@@ -127,14 +127,14 @@ public final class GFManager implements Listener {
     );
 
     private Component fishingHud(FishingChallenge ch) {
-        int percent = (int) Math.round(ch.progress * 100.0);
-        int progressLen = 12;
-        int filled = (int) Math.round(ch.progress * progressLen);
-        String progBar = "▰".repeat(Math.max(0, Math.min(progressLen, filled)))
-                + "▱".repeat(Math.max(0, progressLen - filled));
+        int required = ch.requiredClicks;
+        int current = Math.min(ch.currentClicks, required);
+        String bar = "▲".repeat(current) + "△".repeat(Math.max(0, required - current));
+        NamedTextColor color = current >= required ? NamedTextColor.GOLD : NamedTextColor.YELLOW;
         return Component.text("🎣 ", NamedTextColor.AQUA)
-                .append(Component.text(progBar + " ", NamedTextColor.YELLOW))
-                .append(Component.text(percent + "%", NamedTextColor.GREEN));
+                .append(Component.text("Клики: ", NamedTextColor.GRAY))
+                .append(Component.text(bar + " ", color))
+                .append(Component.text(current + "/" + required, color));
     }
 
     public GFManager(GoneCasinoPlugin plugin) {
@@ -1170,18 +1170,34 @@ public final class GFManager implements Listener {
             }
         }
 
-        if (event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK) {
+        if (event.getAction() == Action.LEFT_CLICK_AIR || event.getAction() == Action.LEFT_CLICK_BLOCK) {
             ItemStack it = event.getItem();
             if (it != null && it.getType() == Material.FISHING_ROD) {
                 FishingChallenge ch = challenges.get(p.getUniqueId());
                 if (ch != null && !ch.completed && !ch.failed) {
                     if (tickCounter >= ch.nextClickTick) {
-                        ch.progress = Math.min(1.0, ch.progress + ch.progressGain);
+                        ch.currentClicks = Math.min(ch.requiredClicks, ch.currentClicks + 1);
                         ch.nextClickTick = tickCounter + ch.clickCooldownTicks;
-                        ch.zeroTicks = 0;
                         if (tickCounter % ch.hudIntervalTicks == 0) {
                             p.sendActionBar(fishingHud(ch));
                         }
+                    }
+                }
+            }
+        }
+
+        if (event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK) {
+            ItemStack it = event.getItem();
+            if (it != null && it.getType() == Material.FISHING_ROD) {
+                FishingChallenge ch = challenges.get(p.getUniqueId());
+                if (ch != null && !ch.completed && !ch.failed) {
+                    if (ch.currentClicks >= ch.requiredClicks) {
+                        ch.completed = true;
+                        challenges.remove(p.getUniqueId());
+                        finishFishingChallenge(p, ch);
+                    } else {
+                        ch.missed = true;
+                        p.sendMessage(Text.bad("Слишком рано! Нужно ещё кликов: " + (ch.requiredClicks - ch.currentClicks)));
                     }
                 }
             }
@@ -1235,18 +1251,11 @@ public final class GFManager implements Listener {
         FishData fish = rollFish(baitTier, rodLuck, isNight);
         FishProfile profile = buildFishProfile(fish, p.getLocation(), baitTier, rodPower, rodLuck, p.getLevel());
 
-        double progressGain = plugin.getConfig().getDouble("fishing.minigame.progress_gain", 0.018);
-        double progressLoss = plugin.getConfig().getDouble("fishing.minigame.progress_loss", 0.024);
-        progressGain += sharedPullReduction * 0.002;
-        progressGain += sharedPullCooldownReductionMs / 20000.0;
-        progressLoss = Math.max(0.008, progressLoss - sharedPullCooldownReductionMs / 30000.0);
-        progressLoss += profile.difficulty * 0.002;
-
         int timeLimit = plugin.getConfig().getInt("fishing.minigame.time_limit_ticks", 420);
         timeLimit += (int) Math.round(sharedWindowBonusMs / 1000.0 * 20.0);
-        int failZeroTicks = plugin.getConfig().getInt("fishing.minigame.fail_zero_ticks", 40);
         int hudInterval = plugin.getConfig().getInt("fishing.minigame.hud_interval_ticks", 4);
 
+        int requiredClicks = Math.max(1, Math.min(5, fish.rarity().ordinal() + 1));
         int clickTicks = plugin.getConfig().getInt("fishing.input_click_ticks", 2);
         int cooldownReduction = (int) Math.round(sharedPullCooldownReductionMs / 50.0);
         int clickCooldownTicks = Math.max(1, clickTicks - cooldownReduction);
@@ -1257,12 +1266,10 @@ public final class GFManager implements Listener {
                 baitTier,
                 rodPower,
                 rodLuck,
-                progressGain,
-                progressLoss,
                 timeLimit,
-                failZeroTicks,
                 tickCounter,
                 hudInterval,
+                requiredClicks,
                 clickCooldownTicks
         );
         challenges.put(p.getUniqueId(), ch);
@@ -1273,7 +1280,7 @@ public final class GFManager implements Listener {
                 : Component.text("Жми ▲ в зоне рыбы", NamedTextColor.YELLOW);
         p.showTitle(Title.title(
                 Component.text("🎣 Поединок с рыбой!", NamedTextColor.AQUA),
-                Component.text("Жми ▲ чтобы тянуть рыбу", NamedTextColor.YELLOW),
+                Component.text("Накликай " + requiredClicks + " раз и подтверди ПКМ", NamedTextColor.YELLOW),
                 Title.Times.times(Duration.ofMillis(200), Duration.ofMillis(900), Duration.ofMillis(200))
         ));
         p.playSound(p.getLocation(), Sound.ENTITY_FISHING_BOBBER_SPLASH, 0.8f, 1.1f);
@@ -1305,34 +1312,8 @@ public final class GFManager implements Listener {
                 continue;
             }
 
-            double reduced = Math.max(0.0, ch.progress - ch.progressLoss);
-            if (reduced < ch.progress && ch.progress > 0.0) {
-                ch.missed = true;
-            }
-            ch.progress = reduced;
-
-            if (ch.progress <= 0.0) {
-                ch.zeroTicks++;
-            } else {
-                ch.zeroTicks = 0;
-            }
-
-            if (ch.zeroTicks > ch.failZeroTicks) {
-                ch.failed = true;
-                iterator.remove();
-                p.sendMessage(Text.bad("Рыба сорвалась..."));
-                p.playSound(p.getLocation(), Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 0.6f, 0.6f);
-                continue;
-            }
-
             if (tickCounter % ch.hudIntervalTicks == 0) {
                 p.sendActionBar(fishingHud(ch));
-            }
-
-            if (ch.progress >= 1.0) {
-                ch.completed = true;
-                iterator.remove();
-                finishFishingChallenge(p, ch);
             }
         }
     }
@@ -1716,16 +1697,13 @@ public final class GFManager implements Listener {
         final int baitTier;
         final int rodPower;
         final int rodLuck;
-        final double progressGain;
-        final double progressLoss;
         final int timeLimitTicks;
-        final int failZeroTicks;
         final int hudIntervalTicks;
+        final int requiredClicks;
         final int clickCooldownTicks;
         final long startTick;
         long nextClickTick;
-        double progress;
-        int zeroTicks;
+        int currentClicks;
         boolean missed;
         boolean completed;
         boolean failed;
@@ -1736,12 +1714,10 @@ public final class GFManager implements Listener {
                 int baitTier,
                 int rodPower,
                 int rodLuck,
-                double progressGain,
-                double progressLoss,
                 int timeLimitTicks,
-                int failZeroTicks,
                 long startTick,
                 int hudIntervalTicks,
+                int requiredClicks,
                 int clickCooldownTicks
         ) {
             this.fish = fish;
@@ -1749,16 +1725,13 @@ public final class GFManager implements Listener {
             this.baitTier = baitTier;
             this.rodPower = rodPower;
             this.rodLuck = rodLuck;
-            this.progressGain = progressGain;
-            this.progressLoss = progressLoss;
             this.timeLimitTicks = timeLimitTicks;
-            this.failZeroTicks = failZeroTicks;
             this.startTick = startTick;
             this.hudIntervalTicks = Math.max(1, hudIntervalTicks);
+            this.requiredClicks = Math.max(1, Math.min(5, requiredClicks));
             this.clickCooldownTicks = Math.max(1, clickCooldownTicks);
             this.nextClickTick = startTick;
-            this.progress = 0.0;
-            this.zeroTicks = 0;
+            this.currentClicks = 0;
             this.missed = false;
             this.completed = false;
             this.failed = false;

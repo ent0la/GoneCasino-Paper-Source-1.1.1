@@ -13,10 +13,7 @@ fishing:
   input_click_ticks: 2
   minigame:
     hud_interval_ticks: 4
-    progress_gain: 0.02
-    progress_loss: 0.02
     time_limit_ticks: 420
-    fail_zero_ticks: 40
   loot:
     treasure_chance: 0.08
     trash_chance: 0.07
