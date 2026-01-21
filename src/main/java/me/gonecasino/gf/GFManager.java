@@ -2,6 +2,7 @@ package me.gonecasino.gf;
 
 import me.gonecasino.GoneCasinoPlugin;
 import me.gonecasino.util.LocUtil;
+import me.gonecasino.util.Keys;
 import me.gonecasino.util.Text;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -18,8 +19,10 @@ import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.event.player.PlayerBedEnterEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.Event;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -73,6 +76,7 @@ public final class GFManager implements Listener {
     private UUID traderUuid;
     private static final String TRADER_TITLE = "Странный торговец";
     private static final String SHOP_TITLE = "Торговец у Алтаря";
+    private static final double TRADER_SCAN_RADIUS = 6.0;
 
     // fishing minigame
     private static final DecimalFormat DF = new DecimalFormat("0.00");
@@ -456,6 +460,10 @@ public final class GFManager implements Listener {
             if (e != null && !e.isDead()) return;
         }
 
+        if (bindExistingTrader()) {
+            return;
+        }
+
         World w = altarBlock.getWorld();
         Location loc = altarBlock.clone().add(2.5, 0, -1.5);
         loc.setY(w.getHighestBlockYAt(loc) + 1);
@@ -468,6 +476,7 @@ public final class GFManager implements Listener {
         v.setPersistent(true);
         v.setSilent(true);
         v.setProfession(org.bukkit.entity.Villager.Profession.CLERIC);
+        v.getPersistentDataContainer().set(Keys.GF_TRADER, PersistentDataType.BYTE, (byte) 1);
 
         traderUuid = v.getUniqueId();
     }
@@ -480,7 +489,33 @@ public final class GFManager implements Listener {
     }
 
     private boolean isTrader(Entity e) {
-        return traderUuid != null && e != null && traderUuid.equals(e.getUniqueId());
+        if (e == null) return false;
+        if (traderUuid != null && traderUuid.equals(e.getUniqueId())) return true;
+        if (!(e instanceof Villager villager)) return false;
+        if (villager.getPersistentDataContainer().has(Keys.GF_TRADER, PersistentDataType.BYTE)) {
+            traderUuid = villager.getUniqueId();
+            return true;
+        }
+        return false;
+    }
+
+    private boolean bindExistingTrader() {
+        if (altarBlock == null || altarBlock.getWorld() == null) return false;
+        World w = altarBlock.getWorld();
+        Location loc = altarBlock.clone().add(2.5, 0, -1.5);
+        for (Entity entity : w.getNearbyEntities(loc, TRADER_SCAN_RADIUS, TRADER_SCAN_RADIUS, TRADER_SCAN_RADIUS)) {
+            if (!(entity instanceof Villager villager)) continue;
+            if (!villager.getPersistentDataContainer().has(Keys.GF_TRADER, PersistentDataType.BYTE)) continue;
+            traderUuid = villager.getUniqueId();
+            villager.setAI(false);
+            villager.setInvulnerable(true);
+            villager.setPersistent(true);
+            villager.setSilent(true);
+            villager.customName(Component.text(TRADER_TITLE, NamedTextColor.GOLD));
+            villager.setCustomNameVisible(true);
+            return true;
+        }
+        return false;
     }
 
     private Inventory createShopInventory() {
@@ -523,8 +558,10 @@ public final class GFManager implements Listener {
         Player p = event.getPlayer();
 
         ItemStack hand = p.getInventory().getItemInMainHand();
-        if (GFItems.isCustomFish(hand)) {
-            FishData fish = GFItems.readFish(hand);
+        ItemStack offhand = p.getInventory().getItemInOffHand();
+        ItemStack fishItem = GFItems.isCustomFish(hand) ? hand : (GFItems.isCustomFish(offhand) ? offhand : null);
+        if (fishItem != null) {
+            FishData fish = GFItems.readFish(fishItem);
             if (fish != null) {
                 if (!plugin.bank().isAvailable()) {
                     p.sendMessage(Text.bad("Экономика недоступна (Vault)."));
@@ -532,7 +569,7 @@ public final class GFManager implements Listener {
                 }
                 int value = fish.value();
                 plugin.bank().give(value);
-                hand.setAmount(hand.getAmount() - 1);
+                fishItem.setAmount(fishItem.getAmount() - 1);
                 p.sendMessage(Text.ok("Вы продали рыбу за " + value + " фишек."));
                 p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_YES, 1f, 1.2f);
                 return;
@@ -879,6 +916,13 @@ public final class GFManager implements Listener {
                     .append(Component.text(ch.fish.speciesName(), ch.fish.rarity().color))
                     .append(Component.text(" | Вес: " + DF.format(ch.fish.weightKg()) + "кг | Очки: " + ch.fish.points(), NamedTextColor.GRAY))
             );
+            forEachGamePlayer(pp -> {
+                if (pp.getUniqueId().equals(p.getUniqueId())) return;
+                pp.sendMessage(Component.text(p.getName() + " поймал: ", NamedTextColor.AQUA)
+                        .append(Component.text(ch.fish.speciesName(), ch.fish.rarity().color))
+                        .append(Component.text(" | Вес: " + DF.format(ch.fish.weightKg()) + "кг | Очки: " + ch.fish.points(), NamedTextColor.GRAY))
+                );
+            });
             p.playSound(p.getLocation(), Sound.ENTITY_FISH_SWIM, 0.8f, 1.2f);
         }
 
@@ -899,6 +943,21 @@ public final class GFManager implements Listener {
         if (random.nextDouble() < 0.25) {
             m.addPotionEffect(new PotionEffect(PotionEffectType.INCREASE_DAMAGE, 20 * 120, 0));
         }
+    }
+
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        if (!running || bossBar == null) return;
+        if (!players.contains(player.getUniqueId())) return;
+        bossBar.addPlayer(player);
+        updateBossbar();
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        if (bossBar == null) return;
+        bossBar.removePlayer(event.getPlayer());
     }
 
     private FishData rollFish(int baitTier, int rodLuck, boolean night) {
