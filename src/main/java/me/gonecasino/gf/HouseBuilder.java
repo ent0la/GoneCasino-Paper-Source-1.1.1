@@ -8,7 +8,6 @@ import org.bukkit.block.Chest;
 import org.bukkit.block.data.Bisected;
 import org.bukkit.block.data.type.Bed;
 import org.bukkit.block.data.type.Door;
-import org.bukkit.block.data.type.Slab;
 import org.bukkit.util.BoundingBox;
 
 /**
@@ -92,26 +91,23 @@ public final class HouseBuilder {
         doorTopData.setHalf(Bisected.Half.TOP);
         doorTop.setBlockData(doorTopData, false);
 
-        // Roof (simple slab roof)
+        // Roof (full block roof)
         for (int x = -1; x <= w; x++) {
             for (int z = -1; z <= l; z++) {
                 Block roof = world.getBlockAt(baseX + x, baseY + h + 1, baseZ + z);
-                roof.setType(Material.SPRUCE_SLAB, false);
-                Slab slab = (Slab) roof.getBlockData();
-                slab.setType(Slab.Type.TOP);
-                roof.setBlockData(slab, false);
+                roof.setType(Material.DARK_OAK_PLANKS, false);
             }
         }
 
         // Windows
-        set(world, baseX + 2, baseY + 2, baseZ, Material.GLASS_PANE);
-        set(world, baseX + 6, baseY + 2, baseZ, Material.GLASS_PANE);
-        set(world, baseX + 2, baseY + 2, baseZ + (l - 1), Material.GLASS_PANE);
-        set(world, baseX + 6, baseY + 2, baseZ + (l - 1), Material.GLASS_PANE);
-        set(world, baseX, baseY + 2, baseZ + 2, Material.GLASS_PANE);
-        set(world, baseX, baseY + 2, baseZ + 4, Material.GLASS_PANE);
-        set(world, baseX + (w - 1), baseY + 2, baseZ + 2, Material.GLASS_PANE);
-        set(world, baseX + (w - 1), baseY + 2, baseZ + 4, Material.GLASS_PANE);
+        set(world, baseX + 2, baseY + 2, baseZ, Material.GLASS);
+        set(world, baseX + 6, baseY + 2, baseZ, Material.GLASS);
+        set(world, baseX + 2, baseY + 2, baseZ + (l - 1), Material.GLASS);
+        set(world, baseX + 6, baseY + 2, baseZ + (l - 1), Material.GLASS);
+        set(world, baseX, baseY + 2, baseZ + 2, Material.GLASS);
+        set(world, baseX, baseY + 2, baseZ + 4, Material.GLASS);
+        set(world, baseX + (w - 1), baseY + 2, baseZ + 2, Material.GLASS);
+        set(world, baseX + (w - 1), baseY + 2, baseZ + 4, Material.GLASS);
 
         // Beds (4) - corners
         placeBed(world, baseX + 1, baseY + 1, baseZ + 2, org.bukkit.block.BlockFace.SOUTH);
@@ -130,7 +126,7 @@ public final class HouseBuilder {
 
         // Starter chest with rods + bait
         Block chestBlock = world.getBlockAt(baseX + 2, baseY + 1, baseZ + 5);
-        chestBlock.setType(Material.CHEST, false);
+        chestBlock.setType(Material.CHEST, true);
         if (chestBlock.getState() instanceof Chest chest) {
             chest.getInventory().clear();
             for (int i = 0; i < 4; i++) {
@@ -139,7 +135,7 @@ public final class HouseBuilder {
             for (int i = 0; i < 4; i++) {
                 chest.getInventory().addItem(GFItems.createBait(1, 2));
             }
-            chest.update();
+            chest.update(true, false);
         }
 
         return info;
