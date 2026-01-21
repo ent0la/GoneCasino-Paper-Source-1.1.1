@@ -95,6 +95,17 @@ public final class GFManager implements Listener {
 
     private final Random random = new Random();
 
+    private Component fishingActionBar(int pullsDone, int requiredPulls) {
+        int total = Math.max(1, requiredPulls);
+        int filled = (int) Math.round((double) pullsDone / total * 10.0);
+        filled = Math.max(0, Math.min(10, filled));
+        String bar = "■".repeat(filled) + "□".repeat(10 - filled);
+        return Component.text("🎣 ", NamedTextColor.AQUA)
+                .append(Component.text("Рыба на крючке ", NamedTextColor.YELLOW))
+                .append(Component.text(bar + " ", NamedTextColor.GOLD))
+                .append(Component.text(pullsDone + "/" + requiredPulls, NamedTextColor.GRAY));
+    }
+
     public GFManager(GoneCasinoPlugin plugin) {
         this.plugin = plugin;
         this.file = new File(plugin.getDataFolder(), "gf.yml");
@@ -836,10 +847,10 @@ public final class GFManager implements Listener {
                     ch.pullsDone++;
                     if (ch.pullsDone >= ch.requiredPulls) {
                         ch.completed = true;
-                        p.sendActionBar(Component.text("Готово! ПКМ чтобы вытащить", NamedTextColor.GREEN));
+                        p.sendActionBar(Component.text("✨ Рыба готова! ПКМ чтобы вытащить", NamedTextColor.GREEN));
                         p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 0.5f, 1.3f);
                     } else {
-                        p.sendActionBar(Component.text("Тяни рыбу: " + ch.pullsDone + "/" + ch.requiredPulls, NamedTextColor.YELLOW));
+                        p.sendActionBar(fishingActionBar(ch.pullsDone, ch.requiredPulls));
                         p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 0.4f, 1.0f);
                     }
                 }
@@ -880,13 +891,13 @@ public final class GFManager implements Listener {
 
             int baseWindow = plugin.getConfig().getInt("fishing.base_window_ms", 3500);
             double w2w = plugin.getConfig().getDouble("fishing.weight_to_window_ms", 85);
-            long window = (long) (baseWindow - fish.weightKg() * w2w + rodPower * 250L + sharedWindowBonusMs);
-            window = Math.max(1600L, Math.min(6500L, window));
+            long window = (long) (baseWindow - fish.weightKg() * w2w + rodPower * 300L + sharedWindowBonusMs);
+            window = Math.max(2500L, Math.min(9000L, window));
 
             FishingChallenge ch = new FishingChallenge(fish, req, 0, System.currentTimeMillis() + window, false, 0L);
             challenges.put(p.getUniqueId(), ch);
 
-            p.sendActionBar(Component.text("Клюёт! ЛКМ тянуть: 0/" + req, NamedTextColor.YELLOW));
+            p.sendActionBar(fishingActionBar(0, req));
             return;
         }
 
@@ -912,15 +923,15 @@ public final class GFManager implements Listener {
                 p.getWorld().dropItemNaturally(p.getLocation(), custom);
             }
 
-            p.sendMessage(Component.text("Вы поймали: ", NamedTextColor.YELLOW)
+            p.sendMessage(Component.text("🎉 Улов: ", NamedTextColor.YELLOW)
                     .append(Component.text(ch.fish.speciesName(), ch.fish.rarity().color))
-                    .append(Component.text(" | Вес: " + DF.format(ch.fish.weightKg()) + "кг | Очки: " + ch.fish.points(), NamedTextColor.GRAY))
+                    .append(Component.text(" • Вес: " + DF.format(ch.fish.weightKg()) + "кг • Очки: " + ch.fish.points(), NamedTextColor.GRAY))
             );
             forEachGamePlayer(pp -> {
                 if (pp.getUniqueId().equals(p.getUniqueId())) return;
-                pp.sendMessage(Component.text(p.getName() + " поймал: ", NamedTextColor.AQUA)
+                pp.sendMessage(Component.text("🌊 " + p.getName() + " поймал: ", NamedTextColor.AQUA)
                         .append(Component.text(ch.fish.speciesName(), ch.fish.rarity().color))
-                        .append(Component.text(" | Вес: " + DF.format(ch.fish.weightKg()) + "кг | Очки: " + ch.fish.points(), NamedTextColor.GRAY))
+                        .append(Component.text(" • Вес: " + DF.format(ch.fish.weightKg()) + "кг • Очки: " + ch.fish.points(), NamedTextColor.GRAY))
                 );
             });
             p.playSound(p.getLocation(), Sound.ENTITY_FISH_SWIM, 0.8f, 1.2f);

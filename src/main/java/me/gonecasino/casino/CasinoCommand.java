@@ -35,7 +35,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
             player.sendMessage(Text.info("/casino gf join|leave|start|stop|status"));
             if (player.hasPermission("gonecasino.admin")) {
                 player.sendMessage(Text.info("/casino setaltar"));
-                player.sendMessage(Text.info("/casino settable <POKER|SLOT>"));
+                player.sendMessage(Text.info("/casino settable <SLOT>"));
                 player.sendMessage(Text.info("/casino deltable"));
             }
             return true;
@@ -109,14 +109,14 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
                     return true;
                 }
                 if (args.length < 2) {
-                    player.sendMessage(Text.bad("Использование: /casino settable <POKER|SLOT>"));
+                    player.sendMessage(Text.bad("Использование: /casino settable <SLOT>"));
                     return true;
                 }
                 TableType type;
                 try {
                     type = TableType.valueOf(args[1].toUpperCase());
                 } catch (IllegalArgumentException e) {
-                    player.sendMessage(Text.bad("Тип должен быть POKER или SLOT"));
+                    player.sendMessage(Text.bad("Тип должен быть SLOT"));
                     return true;
                 }
                 Block b = player.getTargetBlockExact(6);
@@ -191,7 +191,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
             return prefix(args[1], Arrays.asList("join", "leave", "start", "stop", "status"));
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("settable")) {
-            return prefix(args[1], Arrays.asList("POKER", "SLOT"));
+            return prefix(args[1], List.of("SLOT"));
         }
         return List.of();
     }
