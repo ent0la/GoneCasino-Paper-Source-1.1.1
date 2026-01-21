@@ -15,6 +15,7 @@ public final class Keys {
     public static NamespacedKey FISH_WEIGHT;
     public static NamespacedKey FISH_POINTS;
     public static NamespacedKey FISH_RARITY;
+    public static NamespacedKey FISH_QUALITY;
     public static NamespacedKey FISH_COOKED;
     public static NamespacedKey FISH_VALUE;
     public static NamespacedKey FISH_SPECIES;
@@ -35,6 +36,7 @@ public final class Keys {
         FISH_WEIGHT = new NamespacedKey(plugin, "fish_weight");
         FISH_POINTS = new NamespacedKey(plugin, "fish_points");
         FISH_RARITY = new NamespacedKey(plugin, "fish_rarity");
+        FISH_QUALITY = new NamespacedKey(plugin, "fish_quality");
         FISH_COOKED = new NamespacedKey(plugin, "fish_cooked");
         FISH_VALUE = new NamespacedKey(plugin, "fish_value");
         FISH_SPECIES = new NamespacedKey(plugin, "fish_species");
