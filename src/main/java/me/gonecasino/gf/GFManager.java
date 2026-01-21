@@ -1202,8 +1202,14 @@ public final class GFManager implements Listener {
             if (it != null && it.getType() == Material.FISHING_ROD) {
                 FishingChallenge ch = challenges.get(p.getUniqueId());
                 if (ch != null && !ch.completed && !ch.failed) {
-                    long holdTicks = plugin.getConfig().getLong("fishing.input_hold_ticks", 6L);
-                    ch.inputUntilTick = tickCounter + Math.max(1L, holdTicks);
+                    String inputMode = plugin.getConfig().getString("fishing.input_mode", "click");
+                    if ("hold".equalsIgnoreCase(inputMode)) {
+                        long holdTicks = plugin.getConfig().getLong("fishing.input_hold_ticks", 6L);
+                        ch.inputUntilTick = tickCounter + Math.max(1L, holdTicks);
+                    } else {
+                        long clickTicks = plugin.getConfig().getLong("fishing.input_click_ticks", 2L);
+                        ch.inputUntilTick = tickCounter + Math.max(0L, clickTicks - 1L);
+                    }
                 }
             }
         }
@@ -1297,9 +1303,13 @@ public final class GFManager implements Listener {
         );
         challenges.put(p.getUniqueId(), ch);
 
+        String inputMode = plugin.getConfig().getString("fishing.input_mode", "click");
+        Component instruction = "hold".equalsIgnoreCase(inputMode)
+                ? Component.text("Удерживай ▲ в зоне рыбы", NamedTextColor.YELLOW)
+                : Component.text("Жми ▲ в зоне рыбы", NamedTextColor.YELLOW);
         p.showTitle(Title.title(
                 Component.text("🎣 Поединок с рыбой!", NamedTextColor.AQUA),
-                Component.text("Удерживай ▲ в зоне рыбы", NamedTextColor.YELLOW),
+                instruction,
                 Title.Times.times(Duration.ofMillis(200), Duration.ofMillis(900), Duration.ofMillis(200))
         ));
         p.playSound(p.getLocation(), Sound.ENTITY_FISHING_BOBBER_SPLASH, 0.8f, 1.1f);
