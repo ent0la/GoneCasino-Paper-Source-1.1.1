@@ -17,8 +17,10 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerFishEvent;
+import org.bukkit.event.player.PlayerBedEnterEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.Event;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -57,6 +59,13 @@ public final class GFManager implements Listener {
     private int quotaRequired = 0;
     private int quotaProgress = 0;
     private boolean quotaMet = false;
+    private int pendingQuotaReduction = 0;
+
+    private int sharedRodPower = 0;
+    private int sharedRodLuck = 0;
+    private int sharedWindowBonusMs = 0;
+    private double sharedValueMultiplier = 1.0;
+    private double sharedPointsMultiplier = 1.0;
 
     private org.bukkit.boss.BossBar bossBar;
 
@@ -77,6 +86,8 @@ public final class GFManager implements Listener {
     private BukkitTask flameTask;
     private BukkitTask purgeTask;
     private BukkitTask horrorTask;
+    private BukkitTask monsterTask;
+    private UUID lakeMonsterUuid;
 
     private final Random random = new Random();
 
@@ -95,6 +106,13 @@ public final class GFManager implements Listener {
         String altar = yml.getString("altar", "");
         this.altarBlock = LocUtil.deserializeBlock(altar);
 
+        this.pendingQuotaReduction = yml.getInt("shared.next_day_quota_reduction", 0);
+        this.sharedRodPower = yml.getInt("shared.rod_power", 0);
+        this.sharedRodLuck = yml.getInt("shared.rod_luck", 0);
+        this.sharedWindowBonusMs = yml.getInt("shared.window_bonus_ms", 0);
+        this.sharedValueMultiplier = yml.getDouble("shared.value_multiplier", 1.0);
+        this.sharedPointsMultiplier = yml.getDouble("shared.points_multiplier", 1.0);
+
         if (altarBlock != null && altarBlock.getWorld() != null) {
             int ox = plugin.getConfig().getInt("house.offset_x", 8);
             int oz = plugin.getConfig().getInt("house.offset_z", 0);
@@ -108,6 +126,12 @@ public final class GFManager implements Listener {
     public void save() {
         if (yml == null) yml = new YamlConfiguration();
         yml.set("altar", altarBlock == null ? "" : LocUtil.serializeBlock(altarBlock));
+        yml.set("shared.next_day_quota_reduction", pendingQuotaReduction);
+        yml.set("shared.rod_power", sharedRodPower);
+        yml.set("shared.rod_luck", sharedRodLuck);
+        yml.set("shared.window_bonus_ms", sharedWindowBonusMs);
+        yml.set("shared.value_multiplier", sharedValueMultiplier);
+        yml.set("shared.points_multiplier", sharedPointsMultiplier);
         try {
             yml.save(file);
         } catch (IOException e) {
@@ -194,6 +218,7 @@ public final class GFManager implements Listener {
         challenges.clear();
 
         despawnTrader();
+        clearNightMonsters();
 
         if (bossBar != null) {
             bossBar.removeAll();
@@ -286,12 +311,23 @@ public final class GFManager implements Listener {
         quotaMet = false;
         int base = plugin.getConfig().getInt("quota.base", 40);
         int inc = plugin.getConfig().getInt("quota.increase_per_day", 15);
-        quotaRequired = base + (day - 1) * inc;
+        int rawQuota = base + (day - 1) * inc;
+        int reduce = Math.min(rawQuota, Math.max(0, pendingQuotaReduction));
+        quotaRequired = Math.max(0, rawQuota - reduce);
+        if (reduce > 0) {
+            pendingQuotaReduction = Math.max(0, pendingQuotaReduction - reduce);
+        }
+
+        clearNightMonsters();
 
         spawnTrader();
 
         forEachGamePlayer(p -> {
-            p.sendMessage(Text.ok("День " + day + ". Новая квота: " + quotaRequired + " очков."));
+            if (reduce > 0) {
+                p.sendMessage(Text.ok("День " + day + ". Квота снижена на " + reduce + ": " + quotaRequired + " очков."));
+            } else {
+                p.sendMessage(Text.ok("День " + day + ". Новая квота: " + quotaRequired + " очков."));
+            }
             p.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, 20 * 4, 0, true, false, true));
         });
 
@@ -329,6 +365,13 @@ public final class GFManager implements Listener {
         r.setCustomNameVisible(true);
         r.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, 20 * 120, 1));
         r.addPotionEffect(new PotionEffect(PotionEffectType.INCREASE_DAMAGE, 20 * 120, 0));
+        r.addPotionEffect(new PotionEffect(PotionEffectType.DAMAGE_RESISTANCE, 20 * 120, 1));
+        r.addPotionEffect(new PotionEffect(PotionEffectType.FIRE_RESISTANCE, 20 * 120, 0));
+        r.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, 20 * 120, 0));
+        r.setSilent(false);
+
+        lakeMonsterUuid = r.getUniqueId();
+        startMonsterTask();
 
         forEachGamePlayer(p -> {
             p.sendMessage(Text.bad("Квота не закрыта. Охота началась..."));
@@ -336,9 +379,61 @@ public final class GFManager implements Listener {
         });
     }
 
+    private void startMonsterTask() {
+        if (monsterTask != null) {
+            monsterTask.cancel();
+        }
+        monsterTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!running || !isNight || lakeMonsterUuid == null) return;
+                Entity e = Bukkit.getEntity(lakeMonsterUuid);
+                if (!(e instanceof Ravager monster) || monster.isDead()) return;
+                if (random.nextDouble() < 0.5) {
+                    forEachGamePlayer(p -> {
+                        Location target = p.getLocation().clone();
+                        double angle = random.nextDouble() * Math.PI * 2;
+                        double dist = 6 + random.nextDouble() * 6;
+                        Location tp = target.clone().add(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
+                        tp.setY(tp.getWorld().getHighestBlockYAt(tp) + 1);
+                        monster.teleport(tp);
+                        p.playSound(p.getLocation(), Sound.ENTITY_ENDERMAN_SCREAM, 0.8f, 0.7f);
+                        p.playSound(p.getLocation(), Sound.ENTITY_WARDEN_AMBIENT, 0.6f, 0.6f);
+                        p.spawnParticle(Particle.SMOKE_LARGE, p.getLocation().add(0, 0.6, 0), 16, 0.4, 0.5, 0.4, 0.01);
+                        p.spawnParticle(Particle.SOUL, p.getLocation().add(0, 0.8, 0), 10, 0.5, 0.5, 0.5, 0.02);
+                        if (p.getLocation().distanceSquared(monster.getLocation()) < 64) {
+                            p.addPotionEffect(new PotionEffect(PotionEffectType.DARKNESS, 40, 0, true, false, true));
+                        }
+                    });
+                }
+            }
+        }.runTaskTimer(plugin, 40L, 60L);
+    }
+
+    private void clearNightMonsters() {
+        if (monsterTask != null) {
+            monsterTask.cancel();
+            monsterTask = null;
+        }
+        if (lakeMonsterUuid != null) {
+            Entity e = Bukkit.getEntity(lakeMonsterUuid);
+            if (e != null) e.remove();
+            lakeMonsterUuid = null;
+        }
+        if (altarBlock != null && altarBlock.getWorld() != null) {
+            World w = altarBlock.getWorld();
+            for (Entity e : w.getEntities()) {
+                if (e instanceof Monster) {
+                    e.remove();
+                }
+            }
+        }
+    }
+
     private void updateBossbar() {
         if (bossBar == null) return;
-        String title = (isNight ? "Ночь" : "День") + " " + day + " | Квота: " + quotaProgress + "/" + quotaRequired;
+        int chips = plugin.bank().isAvailable() ? (int) Math.floor(plugin.bank().getBalance()) : 0;
+        String title = (isNight ? "Ночь" : "День") + " " + day + " | Квота: " + quotaProgress + "/" + quotaRequired + " | Фишек: " + chips;
         bossBar.setTitle(title);
         double prog = quotaRequired <= 0 ? 0 : Math.min(1.0, Math.max(0.0, (double) quotaProgress / (double) quotaRequired));
         bossBar.setProgress(prog);
@@ -399,6 +494,8 @@ public final class GFManager implements Listener {
         inv.setItem(15, addPriceLore(GFItems.createRodUpgradeLuck(), plugin.getConfig().getInt("shop.rod_luck_upgrade", 250)));
 
         inv.setItem(16, addPriceLore(GFItems.createQuotaReducer(plugin.getConfig().getInt("quota_reduce_amount", 10)), plugin.getConfig().getInt("shop.quota_reduce_item", 300)));
+        inv.setItem(19, addPriceLore(GFItems.createFishingWindowBoost(plugin.getConfig().getInt("upgrades.window_bonus_ms", 450)), plugin.getConfig().getInt("shop.window_boost", 220)));
+        inv.setItem(20, addPriceLore(GFItems.createCatchBonus(plugin.getConfig().getInt("upgrades.catch_bonus_percent", 12)), plugin.getConfig().getInt("shop.catch_bonus", 260)));
         inv.setItem(22, addPriceLore(GFItems.createCampfireRecall(), plugin.getConfig().getInt("shop.campfire_recall", 120)));
         inv.setItem(23, addPriceLore(GFItems.createAmuletSilence(), plugin.getConfig().getInt("shop.amulet_silence", 180)));
 
@@ -429,8 +526,12 @@ public final class GFManager implements Listener {
         if (GFItems.isCustomFish(hand)) {
             FishData fish = GFItems.readFish(hand);
             if (fish != null) {
+                if (!plugin.bank().isAvailable()) {
+                    p.sendMessage(Text.bad("Экономика недоступна (Vault)."));
+                    return;
+                }
                 int value = fish.value();
-                plugin.data().addChips(p.getUniqueId(), value);
+                plugin.bank().give(value);
                 hand.setAmount(hand.getAmount() - 1);
                 p.sendMessage(Text.ok("Вы продали рыбу за " + value + " фишек."));
                 p.playSound(p.getLocation(), Sound.ENTITY_VILLAGER_YES, 1f, 1.2f);
@@ -460,7 +561,7 @@ public final class GFManager implements Listener {
         Integer price = meta.getPersistentDataContainer().get(new org.bukkit.NamespacedKey(plugin, "shop_price"), PersistentDataType.INTEGER);
         if (price == null) return;
 
-        if (!plugin.data().takeChips(player.getUniqueId(), price)) {
+        if (!plugin.bank().isAvailable() || !plugin.bank().take(price)) {
             player.sendMessage(Text.bad("Недостаточно фишек."));
             player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 0.8f);
             return;
@@ -480,6 +581,15 @@ public final class GFManager implements Listener {
     }
 
     @EventHandler
+    public void onBedEnter(PlayerBedEnterEvent event) {
+        Player player = event.getPlayer();
+        if (!running || !isInGame(player)) return;
+        if (event.getBedEnterResult() == PlayerBedEnterEvent.BedEnterResult.NOT_SAFE) {
+            event.setUseBed(Event.Result.ALLOW);
+        }
+    }
+
+    @EventHandler
     public void onInteract(PlayerInteractEvent event) {
         Player p = event.getPlayer();
 
@@ -494,11 +604,38 @@ public final class GFManager implements Listener {
                         return;
                     }
                     int reduce = plugin.getConfig().getInt("quota_reduce_amount", 10);
-                    quotaRequired = Math.max(0, quotaRequired - reduce);
+                    pendingQuotaReduction += reduce;
                     hand.setAmount(hand.getAmount() - 1);
-                    p.sendMessage(Text.ok("Квота снижена на " + reduce + ". Новая: " + quotaRequired));
+                    p.sendMessage(Text.ok("Снижение квоты следующего дня: -" + reduce + " (в запасе: " + pendingQuotaReduction + ")."));
                     p.playSound(p.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 1f, 1.2f);
                     updateBossbar();
+                    return;
+                }
+                if (GFItems.TYPE_WINDOW_BOOST.equals(type)) {
+                    if (!running || !isInGame(p)) {
+                        p.sendMessage(Text.bad("Это работает только в режиме GONE Fishing."));
+                        return;
+                    }
+                    int bonus = plugin.getConfig().getInt("upgrades.window_bonus_ms", 450);
+                    int max = plugin.getConfig().getInt("upgrades.max_window_bonus_ms", 2400);
+                    sharedWindowBonusMs = Math.min(max, sharedWindowBonusMs + bonus);
+                    hand.setAmount(hand.getAmount() - 1);
+                    p.sendMessage(Text.ok("Окно вываживания увеличено до +" + sharedWindowBonusMs + " мс для команды."));
+                    p.playSound(p.getLocation(), Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.7f, 1.2f);
+                    return;
+                }
+                if (GFItems.TYPE_CATCH_BONUS.equals(type)) {
+                    if (!running || !isInGame(p)) {
+                        p.sendMessage(Text.bad("Это работает только в режиме GONE Fishing."));
+                        return;
+                    }
+                    double bonus = plugin.getConfig().getDouble("upgrades.catch_bonus_percent", 12) / 100.0;
+                    double max = plugin.getConfig().getDouble("upgrades.max_catch_multiplier", 2.5);
+                    sharedValueMultiplier = Math.min(max, sharedValueMultiplier + bonus);
+                    sharedPointsMultiplier = Math.min(max, sharedPointsMultiplier + bonus);
+                    hand.setAmount(hand.getAmount() - 1);
+                    p.sendMessage(Text.ok("Бонус улова: x" + String.format(java.util.Locale.US, "%.2f", sharedValueMultiplier)));
+                    p.playSound(p.getLocation(), Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.8f, 1.1f);
                     return;
                 }
                 if (GFItems.TYPE_CAMPFIRE_RECALL.equals(type)) {
@@ -523,18 +660,34 @@ public final class GFManager implements Listener {
                     return;
                 }
 
-                // rod upgrade application: upgrade in main hand, rod in offhand
+                // shared rod upgrades
                 if (GFItems.TYPE_ROD_POWER.equals(type) || GFItems.TYPE_ROD_LUCK.equals(type)) {
-                    ItemStack off = p.getInventory().getItemInOffHand();
-                    if (off != null && off.getType() == Material.FISHING_ROD) {
-                        boolean ok = GFItems.applyUpgradeToRod(hand, off);
-                        if (ok) {
-                            hand.setAmount(hand.getAmount() - 1);
-                            p.sendMessage(Text.ok("Улучшение применено к удочке."));
-                            p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_USE, 0.7f, 1.2f);
-                        } else {
-                            p.sendMessage(Text.bad("Не удалось применить улучшение."));
+                    if (!running || !isInGame(p)) {
+                        p.sendMessage(Text.bad("Это работает только в режиме GONE Fishing."));
+                        return;
+                    }
+                    if (GFItems.TYPE_ROD_POWER.equals(type)) {
+                        int max = plugin.getConfig().getInt("upgrades.max_team_power", 6);
+                        if (sharedRodPower >= max) {
+                            p.sendMessage(Text.bad("Сила команды уже на максимуме."));
+                            return;
                         }
+                        sharedRodPower++;
+                        hand.setAmount(hand.getAmount() - 1);
+                        p.sendMessage(Text.ok("Сила команды повышена до " + sharedRodPower + "."));
+                        p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_USE, 0.7f, 1.2f);
+                        return;
+                    }
+                    if (GFItems.TYPE_ROD_LUCK.equals(type)) {
+                        int max = plugin.getConfig().getInt("upgrades.max_team_luck", 6);
+                        if (sharedRodLuck >= max) {
+                            p.sendMessage(Text.bad("Удача команды уже на максимуме."));
+                            return;
+                        }
+                        sharedRodLuck++;
+                        hand.setAmount(hand.getAmount() - 1);
+                        p.sendMessage(Text.ok("Удача команды повышена до " + sharedRodLuck + "."));
+                        p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_USE, 0.7f, 1.2f);
                         return;
                     }
                 }
@@ -566,6 +719,7 @@ public final class GFManager implements Listener {
 
                 if (!quotaMet && quotaProgress >= quotaRequired) {
                     quotaMet = true;
+                    clearNightMonsters();
                     forEachGamePlayer(pp -> {
                         pp.sendMessage(Text.ok("Квота закрыта! Алтарь доволен..."));
                         pp.playSound(pp.getLocation(), Sound.BLOCK_BEACON_ACTIVATE, 0.8f, 1.2f);
@@ -636,6 +790,12 @@ public final class GFManager implements Listener {
             if (it != null && it.getType() == Material.FISHING_ROD) {
                 FishingChallenge ch = challenges.get(p.getUniqueId());
                 if (ch != null && !ch.completed && System.currentTimeMillis() <= ch.expireAt) {
+                    long now = System.currentTimeMillis();
+                    int cooldown = plugin.getConfig().getInt("fishing.pull_cooldown_ms", 220);
+                    if (now - ch.lastPullAt < cooldown) {
+                        return;
+                    }
+                    ch.lastPullAt = now;
                     ch.pullsDone++;
                     if (ch.pullsDone >= ch.requiredPulls) {
                         ch.completed = true;
@@ -660,8 +820,8 @@ public final class GFManager implements Listener {
             ItemStack rod = p.getInventory().getItemInMainHand();
             if (rod.getType() != Material.FISHING_ROD) rod = p.getInventory().getItemInOffHand();
 
-            int rodPower = GFItems.getRodPower(rod);
-            int rodLuck = GFItems.getRodLuck(rod);
+            int rodPower = GFItems.getRodPower(rod) + sharedRodPower;
+            int rodLuck = GFItems.getRodLuck(rod) + sharedRodLuck;
 
             ItemStack bait = p.getInventory().getItemInOffHand();
             int baitTier = GFItems.getBaitTier(bait);
@@ -683,10 +843,10 @@ public final class GFManager implements Listener {
 
             int baseWindow = plugin.getConfig().getInt("fishing.base_window_ms", 3500);
             double w2w = plugin.getConfig().getDouble("fishing.weight_to_window_ms", 85);
-            long window = (long) (baseWindow - fish.weightKg() * w2w + rodPower * 250L);
+            long window = (long) (baseWindow - fish.weightKg() * w2w + rodPower * 250L + sharedWindowBonusMs);
             window = Math.max(1600L, Math.min(6500L, window));
 
-            FishingChallenge ch = new FishingChallenge(fish, req, 0, System.currentTimeMillis() + window, false);
+            FishingChallenge ch = new FishingChallenge(fish, req, 0, System.currentTimeMillis() + window, false, 0L);
             challenges.put(p.getUniqueId(), ch);
 
             p.sendActionBar(Component.text("Клюёт! ЛКМ тянуть: 0/" + req, NamedTextColor.YELLOW));
@@ -742,6 +902,12 @@ public final class GFManager implements Listener {
     }
 
     private FishData rollFish(int baitTier, int rodLuck, boolean night) {
+        int requiredTier = plugin.getConfig().getInt("night_fish.required_bait_tier", 3);
+        double nightChance = plugin.getConfig().getDouble("night_fish.chance", 0.18);
+        if (night && baitTier >= requiredTier && random.nextDouble() < nightChance) {
+            return rollNightFish(rodLuck);
+        }
+
         // rarity roll
         int luck = rodLuck * 2 + baitTier * 4 + (night ? 5 : 0);
         int roll = random.nextInt(100) + 1 + luck;
@@ -773,8 +939,8 @@ public final class GFManager implements Listener {
         if (night) weight *= 1.08;
 
         // points/value
-        int points = (int) Math.round(weight * 5 + (rarity.ordinal() * 8));
-        int value = (int) Math.round(points * rarity.valueMult);
+        int points = (int) Math.round((weight * 5 + (rarity.ordinal() * 8)) * sharedPointsMultiplier);
+        int value = (int) Math.round(points * rarity.valueMult * sharedValueMultiplier);
 
         String species = switch (rarity) {
             case COMMON -> "Треска";
@@ -787,19 +953,40 @@ public final class GFManager implements Listener {
         return new FishData(rarity, weight, points, value, false, species);
     }
 
+    private FishData rollNightFish(int rodLuck) {
+        double bonus = plugin.getConfig().getDouble("night_fish.points_bonus", 0.25);
+        List<NightFish> pool = List.of(
+                new NightFish("Лунная щука", FishRarity.RARE, 3.0, 6.5),
+                new NightFish("Тень-угорь", FishRarity.EPIC, 6.5, 12.0),
+                new NightFish("Бездна-катран", FishRarity.LEGENDARY, 11.0, 19.0)
+        );
+        int idx = Math.min(pool.size() - 1, Math.max(0, random.nextInt(pool.size()) + Math.min(2, rodLuck / 2)));
+        NightFish pick = pool.get(idx);
+
+        double weight = pick.minWeight + random.nextDouble() * (pick.maxWeight - pick.minWeight);
+        int basePoints = (int) Math.round((weight * 5 + (pick.rarity.ordinal() * 8)) * (1.0 + bonus));
+        int points = (int) Math.round(basePoints * sharedPointsMultiplier);
+        int value = (int) Math.round(points * pick.rarity.valueMult * sharedValueMultiplier);
+        return new FishData(pick.rarity, weight, points, value, false, pick.name);
+    }
+
+    private record NightFish(String name, FishRarity rarity, double minWeight, double maxWeight) {}
+
     private static final class FishingChallenge {
         final FishData fish;
         final int requiredPulls;
         int pullsDone;
         final long expireAt;
         boolean completed;
+        long lastPullAt;
 
-        FishingChallenge(FishData fish, int requiredPulls, int pullsDone, long expireAt, boolean completed) {
+        FishingChallenge(FishData fish, int requiredPulls, int pullsDone, long expireAt, boolean completed, long lastPullAt) {
             this.fish = fish;
             this.requiredPulls = requiredPulls;
             this.pullsDone = pullsDone;
             this.expireAt = expireAt;
             this.completed = completed;
+            this.lastPullAt = lastPullAt;
         }
     }
 }

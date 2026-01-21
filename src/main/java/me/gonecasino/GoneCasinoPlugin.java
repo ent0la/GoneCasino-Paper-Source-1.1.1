@@ -4,14 +4,14 @@ import me.gonecasino.casino.CasinoCommand;
 import me.gonecasino.casino.PokerCommand;
 import me.gonecasino.casino.TableManager;
 import me.gonecasino.gf.GFManager;
-import me.gonecasino.util.DataStore;
+import me.gonecasino.util.ChipBank;
 import me.gonecasino.util.Keys;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class GoneCasinoPlugin extends JavaPlugin {
 
-    private DataStore dataStore;
+    private ChipBank chipBank;
     private TableManager tableManager;
     private GFManager gfManager;
 
@@ -19,8 +19,8 @@ public final class GoneCasinoPlugin extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
 
-        this.dataStore = new DataStore(this);
-        this.dataStore.load();
+        this.chipBank = new ChipBank(this);
+        this.chipBank.setup();
 
         Keys.init(this);
 
@@ -54,15 +54,11 @@ public final class GoneCasinoPlugin extends JavaPlugin {
         try {
             if (tableManager != null) tableManager.save();
         } catch (Exception ignored) {}
-        try {
-            if (dataStore != null) dataStore.save();
-        } catch (Exception ignored) {}
-
         getLogger().info("GoneCasino disabled.");
     }
 
-    public DataStore data() {
-        return dataStore;
+    public ChipBank bank() {
+        return chipBank;
     }
 
     public TableManager tables() {

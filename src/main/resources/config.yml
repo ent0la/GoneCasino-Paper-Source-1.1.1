@@ -8,13 +8,21 @@ quota:
 # Fishing challenge tuning
 fishing:
   # Minimum and maximum pulls required (before rod power reduction)
-  min_pulls: 2
-  max_pulls: 12
+  min_pulls: 3
+  max_pulls: 16
   # Base time window in milliseconds
-  base_window_ms: 3500
+  base_window_ms: 5200
   # How much weight increases difficulty
-  weight_to_pulls: 0.55
-  weight_to_window_ms: 85
+  weight_to_pulls: 0.7
+  weight_to_window_ms: 65
+  # Minimum delay between pull clicks
+  pull_cooldown_ms: 220
+
+# Night-only fish settings (only with top bait)
+night_fish:
+  chance: 0.18
+  required_bait_tier: 3
+  points_bonus: 0.25
 
 # Cooked fish multipliers
 cooking:
@@ -38,8 +46,23 @@ shop:
   rod_power_upgrade: 250
   rod_luck_upgrade: 250
   quota_reduce_item: 300
+  window_boost: 220
+  catch_bonus: 260
   campfire_recall: 120
   amulet_silence: 180
 
-# How much quota is reduced when using quota_reduce_item
+# How much quota is reduced for the next day when using quota_reduce_item
 quota_reduce_amount: 10
+
+# Shared upgrades tuning
+upgrades:
+  window_bonus_ms: 450
+  max_window_bonus_ms: 2400
+  catch_bonus_percent: 12
+  max_catch_multiplier: 2.5
+  max_team_power: 6
+  max_team_luck: 6
+
+# Vault economy settings
+economy:
+  bank_name: "gonecasino"

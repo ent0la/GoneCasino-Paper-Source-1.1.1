@@ -79,13 +79,18 @@ public final class PokerManager {
         }
 
         int ante = 50;
-        int pot = 0;
-        for (Player p : players) {
-            if (!plugin.data().takeChips(p.getUniqueId(), ante)) {
-                p.sendMessage(Text.bad("Недостаточно фишек для анте (" + ante + ")."));
-                return false;
+        int pot = ante * players.size();
+        if (!plugin.bank().isAvailable()) {
+            for (Player p : players) {
+                p.sendMessage(Text.bad("Экономика недоступна (Vault)."));
             }
-            pot += ante;
+            return false;
+        }
+        if (!plugin.bank().take(pot)) {
+            for (Player p : players) {
+                p.sendMessage(Text.bad("Недостаточно фишек для анте (" + ante + ")."));
+            }
+            return false;
         }
 
         Deck deck = new Deck();
@@ -130,7 +135,7 @@ public final class PokerManager {
         int remainder = pot % winners.size();
         for (int i = 0; i < winners.size(); i++) {
             int win = share + (i == 0 ? remainder : 0);
-            plugin.data().addChips(winners.get(i).getUniqueId(), win);
+            plugin.bank().give(win);
         }
 
         String winNames = winners.stream().map(Player::getName).reduce((a,b)->a+", "+b).orElse("?");

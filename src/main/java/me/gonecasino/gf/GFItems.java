@@ -28,6 +28,8 @@ public final class GFItems {
     public static final String TYPE_QUOTA_REDUCER = "quota_reducer";
     public static final String TYPE_CAMPFIRE_RECALL = "campfire_recall";
     public static final String TYPE_AMULET_SILENCE = "amulet_silence";
+    public static final String TYPE_WINDOW_BOOST = "window_boost";
+    public static final String TYPE_CATCH_BONUS = "catch_bonus";
 
     public static ItemStack createBait(int tier, int amount) {
         Material mat = switch (tier) {
@@ -69,10 +71,9 @@ public final class GFItems {
     public static ItemStack createRodUpgradePower() {
         ItemStack it = new ItemStack(Material.ENCHANTED_BOOK, 1);
         ItemMeta meta = it.getItemMeta();
-        meta.displayName(Component.text("Улучшение удочки: Сила", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
+        meta.displayName(Component.text("Улучшение удочек: Сила", NamedTextColor.AQUA).decoration(TextDecoration.ITALIC, false));
         meta.lore(List.of(
-                Component.text("Держи улучшение в основной руке", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                Component.text("а удочку в ЛЕВОЙ, затем ПКМ.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                Component.text("ПКМ: общее усиление для команды", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                 Component.text("Эффект: легче вытаскивать тяжёлую рыбу", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
         ));
         meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
@@ -85,10 +86,9 @@ public final class GFItems {
     public static ItemStack createRodUpgradeLuck() {
         ItemStack it = new ItemStack(Material.ENCHANTED_BOOK, 1);
         ItemMeta meta = it.getItemMeta();
-        meta.displayName(Component.text("Улучшение удочки: Удача", NamedTextColor.GREEN).decoration(TextDecoration.ITALIC, false));
+        meta.displayName(Component.text("Улучшение удочек: Удача", NamedTextColor.GREEN).decoration(TextDecoration.ITALIC, false));
         meta.lore(List.of(
-                Component.text("Держи улучшение в основной руке", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
-                Component.text("а удочку в ЛЕВОЙ, затем ПКМ.", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                Component.text("ПКМ: общее усиление для команды", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
                 Component.text("Эффект: чаще попадается редкая рыба", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
         ));
         meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
@@ -103,9 +103,36 @@ public final class GFItems {
         ItemMeta meta = it.getItemMeta();
         meta.displayName(Component.text("Купон: Снижение квоты", NamedTextColor.GOLD).decoration(TextDecoration.ITALIC, false));
         meta.lore(List.of(
-                Component.text("ПКМ в руке: уменьшает квоту на " + amount, NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+                Component.text("ПКМ в руке: уменьшает квоту", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                Component.text("следующего дня на " + amount, NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
         ));
         meta.getPersistentDataContainer().set(Keys.ITEM_TYPE, PersistentDataType.STRING, TYPE_QUOTA_REDUCER);
+        it.setItemMeta(meta);
+        return it;
+    }
+
+    public static ItemStack createFishingWindowBoost(int bonusMs) {
+        ItemStack it = new ItemStack(Material.CLOCK, 1);
+        ItemMeta meta = it.getItemMeta();
+        meta.displayName(Component.text("Ритуал: Спокойная вода", NamedTextColor.BLUE).decoration(TextDecoration.ITALIC, false));
+        meta.lore(List.of(
+                Component.text("ПКМ: увеличивает окно вываживания", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                Component.text("на +" + bonusMs + " мс для всех", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+        ));
+        meta.getPersistentDataContainer().set(Keys.ITEM_TYPE, PersistentDataType.STRING, TYPE_WINDOW_BOOST);
+        it.setItemMeta(meta);
+        return it;
+    }
+
+    public static ItemStack createCatchBonus(int percent) {
+        ItemStack it = new ItemStack(Material.PRISMARINE_SHARD, 1);
+        ItemMeta meta = it.getItemMeta();
+        meta.displayName(Component.text("Ритуал: Богатый улов", NamedTextColor.DARK_AQUA).decoration(TextDecoration.ITALIC, false));
+        meta.lore(List.of(
+                Component.text("ПКМ: больше очков и цены", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false),
+                Component.text("+" + percent + "% для всей команды", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
+        ));
+        meta.getPersistentDataContainer().set(Keys.ITEM_TYPE, PersistentDataType.STRING, TYPE_CATCH_BONUS);
         it.setItemMeta(meta);
         return it;
     }

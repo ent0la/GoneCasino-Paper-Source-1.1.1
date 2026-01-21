@@ -23,6 +23,7 @@ repositories {
 dependencies {
     // Paper API for Minecraft 1.20.6
     compileOnly("io.papermc.paper:paper-api:1.20.6-R0.1-SNAPSHOT")
+    compileOnly("com.github.MilkBowl:VaultAPI:1.7")
 }
 
 tasks.processResources {
