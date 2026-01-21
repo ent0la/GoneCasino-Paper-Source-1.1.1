@@ -247,6 +247,10 @@ public final class GFItems {
                 .decoration(TextDecoration.ITALIC, false)
                 .decoration(TextDecoration.BOLD, fish.rarity() == FishRarity.LEGENDARY);
         meta.displayName(display);
+        Integer modelData = FishCatalog.getModelData(fish.speciesName());
+        if (modelData != null) {
+            meta.setCustomModelData(modelData);
+        }
 
         List<Component> lore = new ArrayList<>();
         lore.add(Component.text("Редкость: " + fish.rarity().ruName, NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));

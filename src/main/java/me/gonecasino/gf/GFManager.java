@@ -1390,25 +1390,15 @@ public final class GFManager implements Listener {
     }
 
     private String rollSpecies(FishRarity rarity) {
-        List<String> pool = switch (rarity) {
-            case COMMON -> List.of("Треска", "Карась", "Плотва", "Окунь");
-            case UNCOMMON -> List.of("Лосось", "Сиг", "Речной форель", "Щука");
-            case RARE -> List.of("Глубинная рыба", "Серебряный сом", "Голубой линь");
-            case EPIC -> List.of("Тёмный карп", "Лунный осётр", "Сонный угорь");
-            case LEGENDARY -> List.of("Рыба-кошмар", "Клинок-рыба", "Звёздный скат");
-        };
+        List<String> pool = FishCatalog.getSpeciesForRarity(rarity);
         return pool.get(random.nextInt(pool.size()));
     }
 
     private FishData rollNightFish(int rodLuck) {
         double bonus = plugin.getConfig().getDouble("night_fish.points_bonus", 0.25);
-        List<NightFish> pool = List.of(
-                new NightFish("Лунная щука", FishRarity.RARE, 3.0, 6.5),
-                new NightFish("Тень-угорь", FishRarity.EPIC, 6.5, 12.0),
-                new NightFish("Бездна-катран", FishRarity.LEGENDARY, 11.0, 19.0)
-        );
+        List<FishCatalog.NightFishDefinition> pool = FishCatalog.getNightFish();
         int idx = Math.min(pool.size() - 1, Math.max(0, random.nextInt(pool.size()) + Math.min(2, rodLuck / 2)));
-        NightFish pick = pool.get(idx);
+        FishCatalog.NightFishDefinition pick = pool.get(idx);
 
         double weight = pick.minWeight + random.nextDouble() * (pick.maxWeight - pick.minWeight);
         int basePoints = (int) Math.round((weight * 5 + (pick.rarity.ordinal() * 8)) * (1.0 + bonus));
@@ -1416,8 +1406,6 @@ public final class GFManager implements Listener {
         int value = (int) Math.round(points * pick.rarity.valueMult * sharedValueMultiplier);
         return new FishData(pick.rarity, weight, points, value, false, pick.name);
     }
-
-    private record NightFish(String name, FishRarity rarity, double minWeight, double maxWeight) {}
 
     private static final class FishingChallenge {
         final FishData fish;
