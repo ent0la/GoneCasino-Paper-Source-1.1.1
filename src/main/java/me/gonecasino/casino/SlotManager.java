@@ -18,7 +18,11 @@ public final class SlotManager {
 
     public void spin(Player player) {
         int bet = 50;
-        if (!plugin.data().takeChips(player.getUniqueId(), bet)) {
+        if (!plugin.bank().isAvailable()) {
+            player.sendMessage(Text.bad("Экономика недоступна (Vault)."));
+            return;
+        }
+        if (!plugin.bank().take(bet)) {
             player.sendMessage(Text.bad("Недостаточно фишек. Ставка: " + bet));
             player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1f, 0.8f);
             return;
@@ -36,7 +40,7 @@ public final class SlotManager {
         }
 
         if (payout > 0) {
-            plugin.data().addChips(player.getUniqueId(), payout);
+            plugin.bank().give(payout);
             player.showTitle(net.kyori.adventure.title.Title.title(
                     Component.text("SLOTS"),
                     Component.text("Выигрыш: " + payout + " фишек"),

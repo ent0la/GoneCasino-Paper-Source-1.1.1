@@ -2,7 +2,6 @@ package me.gonecasino.casino;
 
 import me.gonecasino.GoneCasinoPlugin;
 import me.gonecasino.util.Text;
-import org.bukkit.Bukkit;
 import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -30,6 +29,9 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 0) {
             player.sendMessage(Text.info("/casino balance | /casino pay <ник> <сумма>"));
+            if (player.hasPermission("gonecasino.admin")) {
+                player.sendMessage(Text.info("/casino givechips <сумма>"));
+            }
             player.sendMessage(Text.info("/casino gf join|leave|start|stop|status"));
             if (player.hasPermission("gonecasino.admin")) {
                 player.sendMessage(Text.info("/casino setaltar"));
@@ -43,23 +45,30 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
 
         switch (sub) {
             case "balance" -> {
-                int bal = plugin.data().getChips(player.getUniqueId());
-                player.sendMessage(Text.ok("Ваш баланс: " + bal + " фишек"));
+                if (!plugin.bank().isAvailable()) {
+                    player.sendMessage(Text.bad("Экономика недоступна (Vault)."));
+                    return true;
+                }
+                int bal = (int) Math.floor(plugin.bank().getBalance());
+                player.sendMessage(Text.ok("Всего фишек: " + bal));
                 return true;
             }
             case "pay" -> {
-                if (args.length < 3) {
-                    player.sendMessage(Text.bad("Использование: /casino pay <ник> <сумма>"));
+                if (!plugin.bank().isAvailable()) {
+                    player.sendMessage(Text.bad("Экономика недоступна (Vault)."));
                     return true;
                 }
-                var target = Bukkit.getPlayerExact(args[1]);
-                if (target == null) {
-                    player.sendMessage(Text.bad("Игрок не найден."));
+                player.sendMessage(Text.info("Фишки общие для всех игроков. Переводы не требуются."));
+                return true;
+            }
+            case "givechips" -> {
+                if (args.length < 2) {
+                    player.sendMessage(Text.bad("Использование: /casino givechips <сумма>"));
                     return true;
                 }
                 int amount;
                 try {
-                    amount = Integer.parseInt(args[2]);
+                    amount = Integer.parseInt(args[1]);
                 } catch (NumberFormatException e) {
                     player.sendMessage(Text.bad("Сумма должна быть числом."));
                     return true;
@@ -68,13 +77,16 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
                     player.sendMessage(Text.bad("Сумма должна быть > 0."));
                     return true;
                 }
-                if (!plugin.data().takeChips(player.getUniqueId(), amount)) {
-                    player.sendMessage(Text.bad("Недостаточно фишек."));
+                if (!player.hasPermission("gonecasino.admin")) {
+                    player.sendMessage(Text.bad("Нет прав."));
                     return true;
                 }
-                plugin.data().addChips(target.getUniqueId(), amount);
-                player.sendMessage(Text.ok("Вы отправили " + amount + " фишек игроку " + target.getName()));
-                target.sendMessage(Text.ok("Вы получили " + amount + " фишек от " + player.getName()));
+                if (!plugin.bank().isAvailable()) {
+                    player.sendMessage(Text.bad("Экономика недоступна (Vault)."));
+                    return true;
+                }
+                plugin.bank().give(amount);
+                player.sendMessage(Text.ok("Вы добавили " + amount + " фишек в общий банк."));
                 return true;
             }
             case "setaltar" -> {
@@ -173,7 +185,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String label, String[] args) {
         if (args.length == 1) {
-            return prefix(args[0], Arrays.asList("balance", "pay", "gf", "setaltar", "settable", "deltable"));
+            return prefix(args[0], Arrays.asList("balance", "pay", "givechips", "gf", "setaltar", "settable", "deltable"));
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("gf")) {
             return prefix(args[1], Arrays.asList("join", "leave", "start", "stop", "status"));
