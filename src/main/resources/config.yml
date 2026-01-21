@@ -60,6 +60,7 @@ shop:
   pull_reduction_boost: 240
   campfire_recall: 120
   amulet_silence: 180
+  upgrade_price_increase_percent: 20
 
 # How much quota is reduced for the next day when using quota_reduce_item
 quota_reduce_amount: 10
