@@ -288,6 +288,7 @@ public final class GFItems {
         Integer pts = pdc.get(Keys.FISH_POINTS, PersistentDataType.INTEGER);
         Integer rar = pdc.get(Keys.FISH_RARITY, PersistentDataType.INTEGER);
         Integer val = pdc.get(Keys.FISH_VALUE, PersistentDataType.INTEGER);
+        Integer qual = pdc.get(Keys.FISH_QUALITY, PersistentDataType.INTEGER);
         Byte cooked = pdc.get(Keys.FISH_COOKED, PersistentDataType.BYTE);
         String name = pdc.get(Keys.FISH_SPECIES, PersistentDataType.STRING);
         if (name == null || name.isBlank()) {
@@ -300,7 +301,13 @@ public final class GFItems {
             r = FishRarity.values()[idx];
         }
 
-        return new FishData(r, w == null ? 0 : w, pts == null ? 0 : pts, val == null ? 0 : val, cooked != null && cooked == (byte) 1, name);
+        FishQuality q = FishQuality.NORMAL;
+        if (qual != null) {
+            int idx = Math.max(0, Math.min(FishQuality.values().length - 1, qual));
+            q = FishQuality.values()[idx];
+        }
+
+        return new FishData(r, q, w == null ? 0 : w, pts == null ? 0 : pts, val == null ? 0 : val, cooked != null && cooked == (byte) 1, name);
     }
 
     public static ItemStack createFishItem(FishData fish) {
@@ -318,6 +325,7 @@ public final class GFItems {
 
         List<Component> lore = new ArrayList<>();
         lore.add(Component.text("Редкость: " + fish.rarity().ruName, NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
+        lore.add(Component.text("Качество: " + fish.quality().ruName, fish.quality().color).decoration(TextDecoration.ITALIC, false));
         lore.add(Component.text("Вес: " + DF.format(fish.weightKg()) + " кг", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
         lore.add(Component.text("Очки: " + fish.points(), NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
         lore.add(Component.text("Цена: " + fish.value() + " фишек", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
@@ -332,6 +340,7 @@ public final class GFItems {
         pdc.set(Keys.FISH_WEIGHT, PersistentDataType.DOUBLE, fish.weightKg());
         pdc.set(Keys.FISH_POINTS, PersistentDataType.INTEGER, fish.points());
         pdc.set(Keys.FISH_RARITY, PersistentDataType.INTEGER, fish.rarity().ordinal());
+        pdc.set(Keys.FISH_QUALITY, PersistentDataType.INTEGER, fish.quality().ordinal());
         pdc.set(Keys.FISH_VALUE, PersistentDataType.INTEGER, fish.value());
         pdc.set(Keys.FISH_SPECIES, PersistentDataType.STRING, fish.speciesName());
         pdc.set(Keys.FISH_COOKED, PersistentDataType.BYTE, (byte) (fish.cooked() ? 1 : 0));

@@ -5,26 +5,46 @@ quota:
   base: 40
   increase_per_day: 15
 
-# Fishing challenge tuning
+# Fishing minigame tuning (Stardew-style)
 fishing:
-  # Minimum and maximum pulls required (before rod power reduction)
-  min_pulls: 2
-  max_pulls: 12
-  # Flat pulls added to every fish (helps make early fish easier)
-  base_pulls: 0
-  # Base time window in milliseconds
-  base_window_ms: 7600
-  # How much weight increases difficulty
-  weight_to_pulls: 0.45
-  weight_to_window_ms: 30
-  # Minimum delay between pull clicks
-  pull_cooldown_ms: 180
-  # Hard caps for the pull window
-  min_window_ms: 3200
-  max_window_ms: 11000
-  # Perfect catch bonus
-  perfect_threshold: 0.35
+  # Perfect catch bonus (applies to points/value)
   perfect_bonus_percent: 15
+  # Input feel + physics
+  input_hold_ticks: 6
+  minigame:
+    bar_length: 30
+    hud_interval_ticks: 4
+    progress_gain: 0.018
+    progress_loss: 0.024
+    time_limit_ticks: 420
+    fail_zero_ticks: 40
+    player_accel_up: 0.035
+    player_accel_down: 0.03
+    player_max_speed: 0.065
+    player_drag: 0.88
+    fish_base_speed: 0.018
+    fish_speed_variance: 0.02
+    fish_inertia: 0.9
+    fish_jerk: 0.015
+    fish_burst_chance: 0.05
+    fish_burst_force: 0.08
+    target_change_min_ticks: 8
+    target_change_max_ticks: 24
+    zone_base: 0.32
+    zone_min: 0.12
+    zone_max: 0.46
+  loot:
+    treasure_chance: 0.08
+    trash_chance: 0.07
+    perfect_treasure_bonus: 0.08
+    quality_base_silver: 0.25
+    quality_base_gold: 0.12
+    quality_base_iridium: 0.04
+    quality_bait_bonus: 0.05
+    quality_luck_bonus: 0.03
+    quality_skill_bonus: 0.004
+    quality_perfect_bonus: 0.15
+    quality_difficulty_penalty: 0.05
 
 # Night-only fish settings (only with top bait)
 night_fish:
