@@ -1,0 +1,45 @@
+# GoneCasino configuration
+
+# Base quota points required on Day 1
+quota:
+  base: 40
+  increase_per_day: 15
+
+# Fishing challenge tuning
+fishing:
+  # Minimum and maximum pulls required (before rod power reduction)
+  min_pulls: 2
+  max_pulls: 12
+  # Base time window in milliseconds
+  base_window_ms: 3500
+  # How much weight increases difficulty
+  weight_to_pulls: 0.55
+  weight_to_window_ms: 85
+
+# Cooked fish multipliers
+cooking:
+  seconds: 5
+  value_multiplier: 1.5
+  points_multiplier: 1.35
+
+# Safe house settings
+house:
+  # Offset from altar where the house will be generated (x,z)
+  offset_x: 8
+  offset_z: 0
+  # Removes hostile mobs inside safe zone every N ticks
+  purge_interval_ticks: 20
+
+# Trader prices in chips
+shop:
+  bait_tier1: 20
+  bait_tier2: 75
+  bait_tier3: 200
+  rod_power_upgrade: 250
+  rod_luck_upgrade: 250
+  quota_reduce_item: 300
+  campfire_recall: 120
+  amulet_silence: 180
+
+# How much quota is reduced when using quota_reduce_item
+quota_reduce_amount: 10
