@@ -9,6 +9,7 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.title.Title;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.*;
+import org.bukkit.block.Biome;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.*;
@@ -94,6 +95,8 @@ public final class GFManager implements Listener {
     // fishing minigame
     private static final DecimalFormat DF = new DecimalFormat("0.00");
     private final Map<UUID, FishingChallenge> challenges = new HashMap<>();
+    private BukkitTask fishingTask;
+    private long tickCounter = 0L;
 
     // cooking tasks
     private final Map<UUID, BukkitTask> cooking = new HashMap<>();
@@ -107,16 +110,49 @@ public final class GFManager implements Listener {
     private UUID lakeMonsterUuid;
 
     private final Random random = new Random();
+    private static final List<LootEntry> TREASURE_TABLE = List.of(
+            new LootEntry(Material.PRISMARINE_SHARD, 1, 3, 5.0),
+            new LootEntry(Material.GOLD_NUGGET, 2, 6, 5.5),
+            new LootEntry(Material.EMERALD, 1, 2, 2.2),
+            new LootEntry(Material.NAUTILUS_SHELL, 1, 1, 1.2),
+            new LootEntry(Material.HEART_OF_THE_SEA, 1, 1, 0.4)
+    );
+    private static final List<LootEntry> TRASH_TABLE = List.of(
+            new LootEntry(Material.STICK, 1, 3, 4.5),
+            new LootEntry(Material.ROTTEN_FLESH, 1, 2, 3.5),
+            new LootEntry(Material.STRING, 1, 3, 3.0),
+            new LootEntry(Material.BONE, 1, 2, 2.4),
+            new LootEntry(Material.KELP, 1, 3, 2.2),
+            new LootEntry(Material.LEATHER_BOOTS, 1, 1, 0.6)
+    );
 
-    private Component fishingActionBar(int pullsDone, int requiredPulls) {
-        int total = Math.max(1, requiredPulls);
-        int filled = (int) Math.round((double) pullsDone / total * 10.0);
-        filled = Math.max(0, Math.min(10, filled));
-        String bar = "■".repeat(filled) + "□".repeat(10 - filled);
+    private Component fishingHud(FishingChallenge ch, boolean inZone) {
+        int length = plugin.getConfig().getInt("fishing.minigame.bar_length", 30);
+        length = Math.max(12, Math.min(40, length));
+        int fishIndex = (int) Math.round(ch.fishPos * (length - 1));
+        int playerIndex = (int) Math.round(ch.playerPos * (length - 1));
+        int zoneRadius = (int) Math.round((ch.zoneSize * length) / 2.0);
+        Component bar = Component.empty();
+        for (int i = 0; i < length; i++) {
+            boolean inFishZone = Math.abs(i - fishIndex) <= zoneRadius;
+            if (i == playerIndex) {
+                NamedTextColor color = inFishZone ? NamedTextColor.GOLD : NamedTextColor.RED;
+                bar = bar.append(Component.text("▲", color));
+            } else {
+                NamedTextColor color = inFishZone ? NamedTextColor.GREEN : NamedTextColor.DARK_GRAY;
+                bar = bar.append(Component.text("█", color));
+            }
+        }
+        int percent = (int) Math.round(ch.progress * 100.0);
+        NamedTextColor stateColor = inZone ? NamedTextColor.GREEN : NamedTextColor.RED;
+        int progressLen = 12;
+        int filled = (int) Math.round(ch.progress * progressLen);
+        String progBar = "▰".repeat(Math.max(0, Math.min(progressLen, filled)))
+                + "▱".repeat(Math.max(0, progressLen - filled));
         return Component.text("🎣 ", NamedTextColor.AQUA)
-                .append(Component.text("Рыба на крючке ", NamedTextColor.YELLOW))
-                .append(Component.text(bar + " ", NamedTextColor.GOLD))
-                .append(Component.text(pullsDone + "/" + requiredPulls, NamedTextColor.GRAY));
+                .append(bar)
+                .append(Component.text(" " + progBar + " ", NamedTextColor.YELLOW))
+                .append(Component.text(percent + "%", stateColor));
     }
 
     public GFManager(GoneCasinoPlugin plugin) {
@@ -469,6 +505,14 @@ public final class GFManager implements Listener {
                 }
             }
         }.runTaskTimer(plugin, 20L * 20, 20L * 20); // every 20s
+
+        fishingTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                tickCounter++;
+                tickFishingChallenges();
+            }
+        }.runTaskTimer(plugin, 1L, 1L);
     }
 
     private void onDayStart() {
@@ -1125,6 +1169,7 @@ public final class GFManager implements Listener {
 
                             FishData cooked = new FishData(
                                     fish.rarity(),
+                                    fish.quality(),
                                     fish.weightKg(),
                                     (int) Math.round(fish.points() * pm),
                                     (int) Math.round(fish.value() * vm),
@@ -1143,28 +1188,13 @@ public final class GFManager implements Listener {
             }
         }
 
-        // left-click tug progress for fishing challenge
-        if (event.getAction() == Action.LEFT_CLICK_AIR || event.getAction() == Action.LEFT_CLICK_BLOCK) {
+        if (event.getAction() == Action.RIGHT_CLICK_AIR || event.getAction() == Action.RIGHT_CLICK_BLOCK) {
             ItemStack it = event.getItem();
             if (it != null && it.getType() == Material.FISHING_ROD) {
                 FishingChallenge ch = challenges.get(p.getUniqueId());
-                if (ch != null && !ch.completed && System.currentTimeMillis() <= ch.expireAt) {
-                    long now = System.currentTimeMillis();
-                    int baseCooldown = plugin.getConfig().getInt("fishing.pull_cooldown_ms", 220);
-                    int cooldown = Math.max(60, baseCooldown - sharedPullCooldownReductionMs);
-                    if (now - ch.lastPullAt < cooldown) {
-                        return;
-                    }
-                    ch.lastPullAt = now;
-                    ch.pullsDone++;
-                    if (ch.pullsDone >= ch.requiredPulls) {
-                        ch.completed = true;
-                        p.sendActionBar(Component.text("✨ Рыба готова! ПКМ чтобы вытащить", NamedTextColor.GREEN));
-                        p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 0.5f, 1.3f);
-                    } else {
-                        p.sendActionBar(fishingActionBar(ch.pullsDone, ch.requiredPulls));
-                        p.playSound(p.getLocation(), Sound.UI_BUTTON_CLICK, 0.4f, 1.0f);
-                    }
+                if (ch != null && !ch.completed && !ch.failed) {
+                    long holdTicks = plugin.getConfig().getLong("fishing.input_hold_ticks", 6L);
+                    ch.inputUntilTick = tickCounter + Math.max(1L, holdTicks);
                 }
             }
         }
@@ -1173,108 +1203,411 @@ public final class GFManager implements Listener {
     @EventHandler
     public void onFish(PlayerFishEvent event) {
         Player p = event.getPlayer();
-        if (!running || !isInGame(p)) return;
-
         if (event.getState() == PlayerFishEvent.State.BITE) {
-            // start challenge
-            ItemStack rod = p.getInventory().getItemInMainHand();
-            if (rod.getType() != Material.FISHING_ROD) rod = p.getInventory().getItemInOffHand();
-
-            int rodPower = GFItems.getRodPower(rod) + sharedRodPower;
-            int rodLuck = GFItems.getRodLuck(rod) + sharedRodLuck;
-
-            ItemStack bait = p.getInventory().getItemInOffHand();
-            int baitTier = GFItems.getBaitTier(bait);
-
-            // consume bait immediately (locks tier for this bite)
-            if (baitTier > 0) {
-                bait.setAmount(bait.getAmount() - 1);
-            }
-
-            FishData fish = rollFish(baitTier, rodLuck, isNight);
-
-            int minPulls = plugin.getConfig().getInt("fishing.min_pulls", 2);
-            int maxPulls = plugin.getConfig().getInt("fishing.max_pulls", 12);
-            double w2p = plugin.getConfig().getDouble("fishing.weight_to_pulls", 0.55);
-            int basePulls = plugin.getConfig().getInt("fishing.base_pulls", 1);
-
-            int req = (int) Math.round(basePulls + minPulls + fish.weightKg() * w2p);
-            req = Math.max(minPulls, Math.min(maxPulls, req));
-            req = Math.max(1, req - rodPower - sharedPullReduction); // power reduces needed tugs
-
-            int baseWindow = plugin.getConfig().getInt("fishing.base_window_ms", 3500);
-            double w2w = plugin.getConfig().getDouble("fishing.weight_to_window_ms", 85);
-            long window = (long) (baseWindow - fish.weightKg() * w2w + rodPower * 220L + sharedWindowBonusMs);
-            long minWindow = plugin.getConfig().getLong("fishing.min_window_ms", 2600L);
-            long maxWindow = plugin.getConfig().getLong("fishing.max_window_ms", 9000L);
-            window = Math.max(minWindow, Math.min(maxWindow, window));
-
-            FishingChallenge ch = new FishingChallenge(fish, req, 0, System.currentTimeMillis() + window, false, 0L, window);
-            challenges.put(p.getUniqueId(), ch);
-
-            p.sendActionBar(fishingActionBar(0, req));
+            event.setCancelled(true);
+            FishingChallenge existing = challenges.get(p.getUniqueId());
+            if (existing != null && !existing.completed && !existing.failed) return;
+            startFishingChallenge(p);
             return;
         }
 
-        if (event.getState() == PlayerFishEvent.State.CAUGHT_FISH) {
-            FishingChallenge ch = challenges.remove(p.getUniqueId());
-            if (ch == null) return;
+        FishingChallenge ch = challenges.get(p.getUniqueId());
+        if (ch != null && (event.getState() == PlayerFishEvent.State.CAUGHT_FISH
+                || event.getState() == PlayerFishEvent.State.REEL_IN)) {
+            event.setCancelled(true);
+            if (event.getCaught() != null) event.getCaught().remove();
+        }
 
-            if (System.currentTimeMillis() > ch.expireAt || !ch.completed) {
-                // fish escaped
-                event.setCancelled(true);
-                if (event.getCaught() != null) event.getCaught().remove();
+        if (event.getState() == PlayerFishEvent.State.FAILED_ATTEMPT
+                || event.getState() == PlayerFishEvent.State.IN_GROUND
+                || event.getState() == PlayerFishEvent.State.CAUGHT_ENTITY) {
+            if (ch != null) {
+                ch.failed = true;
+                challenges.remove(p.getUniqueId());
                 p.sendMessage(Text.bad("Рыба сорвалась..."));
                 p.playSound(p.getLocation(), Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 0.6f, 0.6f);
-                return;
+            }
+        }
+    }
+
+    private void startFishingChallenge(Player p) {
+        ItemStack rod = p.getInventory().getItemInMainHand();
+        if (rod.getType() != Material.FISHING_ROD) rod = p.getInventory().getItemInOffHand();
+
+        int rodPower = GFItems.getRodPower(rod) + sharedRodPower;
+        int rodLuck = GFItems.getRodLuck(rod) + sharedRodLuck;
+
+        ItemStack bait = p.getInventory().getItemInOffHand();
+        int baitTier = GFItems.getBaitTier(bait);
+
+        if (baitTier > 0) {
+            bait.setAmount(bait.getAmount() - 1);
+        }
+
+        FishData fish = rollFish(baitTier, rodLuck, isNight);
+        FishProfile profile = buildFishProfile(fish, p.getLocation(), baitTier, rodPower, rodLuck, p.getLevel());
+
+        double zoneBase = plugin.getConfig().getDouble("fishing.minigame.zone_base", 0.32);
+        double zoneMin = plugin.getConfig().getDouble("fishing.minigame.zone_min", 0.12);
+        double zoneMax = plugin.getConfig().getDouble("fishing.minigame.zone_max", 0.46);
+        double zone = zoneBase - profile.difficulty * 0.08 + baitTier * 0.02 + rodPower * 0.01 + sharedPullReduction * 0.02;
+        zone = Math.max(zoneMin, Math.min(zoneMax, zone));
+
+        double progressGain = plugin.getConfig().getDouble("fishing.minigame.progress_gain", 0.018);
+        double progressLoss = plugin.getConfig().getDouble("fishing.minigame.progress_loss", 0.024);
+        progressGain += sharedPullReduction * 0.002;
+        progressGain += sharedPullCooldownReductionMs / 20000.0;
+        progressLoss = Math.max(0.008, progressLoss - sharedPullCooldownReductionMs / 30000.0);
+
+        int timeLimit = plugin.getConfig().getInt("fishing.minigame.time_limit_ticks", 420);
+        timeLimit += (int) Math.round(sharedWindowBonusMs / 1000.0 * 20.0);
+        int failZeroTicks = plugin.getConfig().getInt("fishing.minigame.fail_zero_ticks", 40);
+        int hudInterval = plugin.getConfig().getInt("fishing.minigame.hud_interval_ticks", 4);
+
+        int minTarget = plugin.getConfig().getInt("fishing.minigame.target_change_min_ticks", 8);
+        int maxTarget = plugin.getConfig().getInt("fishing.minigame.target_change_max_ticks", 24);
+        long nextTargetTick = tickCounter + minTarget + random.nextInt(Math.max(1, maxTarget - minTarget + 1));
+        double fishPos = 0.15 + random.nextDouble() * 0.7;
+
+        FishingChallenge ch = new FishingChallenge(
+                fish,
+                profile,
+                baitTier,
+                rodPower,
+                rodLuck,
+                zone,
+                progressGain,
+                progressLoss,
+                timeLimit,
+                failZeroTicks,
+                tickCounter,
+                hudInterval,
+                fishPos,
+                fishPos,
+                nextTargetTick
+        );
+        challenges.put(p.getUniqueId(), ch);
+
+        p.showTitle(Title.title(
+                Component.text("🎣 Поединок с рыбой!", NamedTextColor.AQUA),
+                Component.text("Удерживай ▲ в зоне рыбы", NamedTextColor.YELLOW),
+                Title.Times.times(Duration.ofMillis(200), Duration.ofMillis(900), Duration.ofMillis(200))
+        ));
+        p.playSound(p.getLocation(), Sound.ENTITY_FISHING_BOBBER_SPLASH, 0.8f, 1.1f);
+    }
+
+    private void tickFishingChallenges() {
+        if (challenges.isEmpty()) return;
+        Iterator<Map.Entry<UUID, FishingChallenge>> iterator = challenges.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<UUID, FishingChallenge> entry = iterator.next();
+            Player p = Bukkit.getPlayer(entry.getKey());
+            if (p == null || !p.isOnline()) {
+                iterator.remove();
+                continue;
             }
 
-            long now = System.currentTimeMillis();
-            double remaining = Math.max(0, ch.expireAt - now);
-            double perfectThreshold = plugin.getConfig().getDouble("fishing.perfect_threshold", 0.35);
-            double perfectBonus = plugin.getConfig().getDouble("fishing.perfect_bonus_percent", 15) / 100.0;
-            boolean perfect = remaining >= ch.totalWindow * perfectThreshold;
-
-            FishData fish = ch.fish;
-            if (perfect) {
-                int boostedPoints = (int) Math.round(fish.points() * (1.0 + perfectBonus));
-                int boostedValue = (int) Math.round(fish.value() * (1.0 + perfectBonus));
-                fish = new FishData(fish.rarity(), fish.weightKg(), boostedPoints, boostedValue, fish.cooked(), fish.speciesName());
+            FishingChallenge ch = entry.getValue();
+            if (ch.completed || ch.failed) {
+                iterator.remove();
+                continue;
             }
 
-            // replace caught item with custom fish
-            ItemStack custom = GFItems.createFishItem(fish);
-            if (event.getCaught() instanceof Item itemEntity) {
-                itemEntity.setItemStack(custom);
+            long elapsed = tickCounter - ch.startTick;
+            if (elapsed > ch.timeLimitTicks) {
+                ch.failed = true;
+                iterator.remove();
+                p.sendMessage(Text.bad("Рыба сорвалась..."));
+                p.playSound(p.getLocation(), Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 0.6f, 0.6f);
+                continue;
+            }
+
+            boolean inputHeld = tickCounter <= ch.inputUntilTick;
+            updatePlayerBar(ch, inputHeld);
+            updateFishMotion(ch);
+
+            boolean inZone = Math.abs(ch.playerPos - ch.fishPos) <= ch.zoneSize / 2.0;
+            if (inZone) {
+                ch.progress = Math.min(1.0, ch.progress + ch.progressGain);
             } else {
-                // fallback: drop to player
-                p.getWorld().dropItemNaturally(p.getLocation(), custom);
+                ch.progress = Math.max(0.0, ch.progress - ch.progressLoss);
+                ch.missed = true;
             }
 
+            if (ch.progress <= 0.0) {
+                ch.zeroTicks++;
+            } else {
+                ch.zeroTicks = 0;
+            }
+
+            if (ch.zeroTicks > ch.failZeroTicks) {
+                ch.failed = true;
+                iterator.remove();
+                p.sendMessage(Text.bad("Рыба сорвалась..."));
+                p.playSound(p.getLocation(), Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 0.6f, 0.6f);
+                continue;
+            }
+
+            if (tickCounter % ch.hudIntervalTicks == 0) {
+                p.sendActionBar(fishingHud(ch, inZone));
+            }
+
+            if (ch.progress >= 1.0) {
+                ch.completed = true;
+                iterator.remove();
+                finishFishingChallenge(p, ch);
+            }
+        }
+    }
+
+    private void updatePlayerBar(FishingChallenge ch, boolean inputHeld) {
+        double accelUp = plugin.getConfig().getDouble("fishing.minigame.player_accel_up", 0.035);
+        double accelDown = plugin.getConfig().getDouble("fishing.minigame.player_accel_down", 0.03);
+        double drag = plugin.getConfig().getDouble("fishing.minigame.player_drag", 0.88);
+        double maxSpeed = plugin.getConfig().getDouble("fishing.minigame.player_max_speed", 0.065);
+
+        double accel = inputHeld ? accelUp : -accelDown;
+        ch.playerVel += accel;
+        ch.playerVel *= drag;
+        ch.playerVel = Math.max(-maxSpeed, Math.min(maxSpeed, ch.playerVel));
+        ch.playerPos += ch.playerVel;
+
+        if (ch.playerPos < 0.0) {
+            ch.playerPos = 0.0;
+            ch.playerVel = 0.0;
+        } else if (ch.playerPos > 1.0) {
+            ch.playerPos = 1.0;
+            ch.playerVel = 0.0;
+        }
+    }
+
+    private void updateFishMotion(FishingChallenge ch) {
+        if (tickCounter >= ch.nextTargetTick) {
+            ch.fishTarget = 0.1 + random.nextDouble() * 0.8;
+            int minTicks = plugin.getConfig().getInt("fishing.minigame.target_change_min_ticks", 12);
+            int maxTicks = plugin.getConfig().getInt("fishing.minigame.target_change_max_ticks", 32);
+            ch.nextTargetTick = tickCounter + minTicks + random.nextInt(Math.max(1, maxTicks - minTicks + 1));
+
+            double burstChance = plugin.getConfig().getDouble("fishing.minigame.fish_burst_chance", 0.035);
+            double burstForce = plugin.getConfig().getDouble("fishing.minigame.fish_burst_force", 0.05);
+            if (random.nextDouble() < burstChance * ch.profile.aggression) {
+                double dir = random.nextBoolean() ? 1.0 : -1.0;
+                ch.fishVel += dir * burstForce * ch.profile.aggression;
+            }
+        }
+
+        double baseSpeed = plugin.getConfig().getDouble("fishing.minigame.fish_base_speed", 0.009);
+        double variance = plugin.getConfig().getDouble("fishing.minigame.fish_speed_variance", 0.009);
+        double aggressionFactor = 0.5 + ch.profile.aggression * 0.3;
+        double maxSpeed = baseSpeed + variance * aggressionFactor;
+        double inertia = plugin.getConfig().getDouble("fishing.minigame.fish_inertia", 0.9);
+        double jerk = plugin.getConfig().getDouble("fishing.minigame.fish_jerk", 0.008);
+        double steerStrength = plugin.getConfig().getDouble("fishing.minigame.fish_steer_strength", 0.035);
+
+        double steer = (ch.fishTarget - ch.fishPos) * steerStrength * (0.75 + ch.profile.aggression * 0.18);
+        ch.fishVel += steer + (random.nextDouble() * 2 - 1) * jerk * ch.profile.jitter;
+        ch.fishVel *= inertia;
+        ch.fishVel = Math.max(-maxSpeed, Math.min(maxSpeed, ch.fishVel));
+        ch.fishPos += ch.fishVel;
+
+        if (ch.fishPos < 0.0) {
+            ch.fishPos = 0.0;
+            ch.fishVel = Math.abs(ch.fishVel) * 0.6;
+        } else if (ch.fishPos > 1.0) {
+            ch.fishPos = 1.0;
+            ch.fishVel = -Math.abs(ch.fishVel) * 0.6;
+        }
+    }
+
+    private void finishFishingChallenge(Player p, FishingChallenge ch) {
+        boolean perfect = !ch.missed;
+        FishingLoot loot = rollFishingLoot(p, ch, perfect);
+
+        if (loot.mainItem != null) {
+            giveToPlayer(p, loot.mainItem);
+        }
+        for (ItemStack extra : loot.bonusItems) {
+            giveToPlayer(p, extra);
+        }
+
+        if (loot.isTrash) {
+            p.sendMessage(Text.info("Вы вытащили мусор: " + loot.mainItem.getType().name().toLowerCase(Locale.ROOT)));
+            p.playSound(p.getLocation(), Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 0.7f, 0.7f);
+        } else {
+            FishData fish = loot.fish;
             p.sendMessage(Component.text("🎉 Улов: ", NamedTextColor.YELLOW)
                     .append(Component.text(fish.speciesName(), fish.rarity().color))
-                    .append(Component.text(" • Вес: " + DF.format(fish.weightKg()) + "кг • Очки: " + fish.points(), NamedTextColor.GRAY))
+                    .append(Component.text(" • " + fish.quality().ruName + " • Вес: " + DF.format(fish.weightKg()) + "кг • Очки: " + fish.points(), NamedTextColor.GRAY))
             );
             forEachGamePlayer(pp -> {
                 if (pp.getUniqueId().equals(p.getUniqueId())) return;
                 pp.sendMessage(Component.text("🌊 " + p.getName() + " поймал: ", NamedTextColor.AQUA)
                         .append(Component.text(fish.speciesName(), fish.rarity().color))
-                        .append(Component.text(" • Вес: " + DF.format(fish.weightKg()) + "кг • Очки: " + fish.points(), NamedTextColor.GRAY))
+                        .append(Component.text(" • " + fish.quality().ruName + " • Вес: " + DF.format(fish.weightKg()) + "кг • Очки: " + fish.points(), NamedTextColor.GRAY))
                 );
             });
             p.playSound(p.getLocation(), Sound.ENTITY_FISH_SWIM, 0.8f, 1.2f);
-            if (perfect) {
-                p.sendMessage(Text.ok("Идеальная подсечка! Бонус к награде."));
-                p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.6f);
-            }
         }
 
-        // clean up on fail
-        if (event.getState() == PlayerFishEvent.State.FAILED_ATTEMPT
-                || event.getState() == PlayerFishEvent.State.IN_GROUND
-                || event.getState() == PlayerFishEvent.State.CAUGHT_ENTITY) {
-            challenges.remove(p.getUniqueId());
+        if (loot.treasureItem != null) {
+            p.sendMessage(Text.ok("Сокровища: +" + loot.treasureItem.getAmount() + " " + loot.treasureItem.getType().name().toLowerCase(Locale.ROOT)));
+            p.playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.9f, 1.4f);
         }
+
+        if (perfect && !loot.isTrash) {
+            p.sendMessage(Text.ok("Идеальный улов! Бонус к награде."));
+            p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.6f);
+        }
+
+        p.spawnParticle(Particle.SPLASH, p.getLocation().add(0, 0.4, 0), 12, 0.35, 0.2, 0.35, 0.0);
+    }
+
+    private void giveToPlayer(Player p, ItemStack item) {
+        Map<Integer, ItemStack> leftover = p.getInventory().addItem(item);
+        if (!leftover.isEmpty()) {
+            for (ItemStack it : leftover.values()) {
+                p.getWorld().dropItemNaturally(p.getLocation(), it);
+            }
+        }
+    }
+
+    private FishingLoot rollFishingLoot(Player p, FishingChallenge ch, boolean perfect) {
+        double treasureChance = plugin.getConfig().getDouble("fishing.loot.treasure_chance", 0.08);
+        double trashChance = plugin.getConfig().getDouble("fishing.loot.trash_chance", 0.07);
+        double perfectTreasure = plugin.getConfig().getDouble("fishing.loot.perfect_treasure_bonus", 0.08);
+
+        treasureChance += ch.rodLuck * 0.012 + ch.baitTier * 0.02 + (perfect ? perfectTreasure : 0.0);
+        treasureChance += ch.fish.rarity().ordinal() * 0.015;
+        treasureChance = Math.min(0.55, Math.max(0.0, treasureChance));
+
+        trashChance -= ch.rodLuck * 0.01 + ch.baitTier * 0.015;
+        trashChance += ch.profile.difficulty * 0.04;
+        trashChance = Math.min(0.45, Math.max(0.02, trashChance));
+
+        ItemStack treasure = null;
+        ItemStack mainItem;
+        FishData fish = null;
+        boolean isTrash = false;
+
+        if (random.nextDouble() < trashChance) {
+            mainItem = rollLootTable(TRASH_TABLE);
+            isTrash = true;
+        } else {
+            FishQuality quality = rollQuality(p, ch, perfect);
+            fish = applyQualityAndBonuses(ch.fish, quality, perfect);
+            mainItem = GFItems.createFishItem(fish);
+        }
+
+        if (!isTrash && random.nextDouble() < treasureChance) {
+            treasure = rollLootTable(TREASURE_TABLE);
+        }
+
+        List<ItemStack> bonus = new ArrayList<>();
+        if (treasure != null) {
+            bonus.add(treasure.clone());
+        }
+
+        return new FishingLoot(mainItem, fish, treasure, bonus, isTrash);
+    }
+
+    private FishData applyQualityAndBonuses(FishData fish, FishQuality quality, boolean perfect) {
+        double perfectBonus = plugin.getConfig().getDouble("fishing.perfect_bonus_percent", 15) / 100.0;
+        double qualityMult = quality.valueMult;
+
+        int points = (int) Math.round(fish.points() * sharedPointsMultiplier * qualityMult);
+        int value = (int) Math.round(fish.value() * sharedValueMultiplier * qualityMult);
+        if (perfect) {
+            points = (int) Math.round(points * (1.0 + perfectBonus));
+            value = (int) Math.round(value * (1.0 + perfectBonus));
+        }
+
+        return new FishData(fish.rarity(), quality, fish.weightKg(), points, value, fish.cooked(), fish.speciesName());
+    }
+
+    private FishQuality rollQuality(Player p, FishingChallenge ch, boolean perfect) {
+        double baseSilver = plugin.getConfig().getDouble("fishing.loot.quality_base_silver", 0.25);
+        double baseGold = plugin.getConfig().getDouble("fishing.loot.quality_base_gold", 0.12);
+        double baseIridium = plugin.getConfig().getDouble("fishing.loot.quality_base_iridium", 0.04);
+        double baitBonus = plugin.getConfig().getDouble("fishing.loot.quality_bait_bonus", 0.05);
+        double luckBonus = plugin.getConfig().getDouble("fishing.loot.quality_luck_bonus", 0.03);
+        double skillBonus = plugin.getConfig().getDouble("fishing.loot.quality_skill_bonus", 0.004);
+        double perfectBonus = plugin.getConfig().getDouble("fishing.loot.quality_perfect_bonus", 0.15);
+        double difficultyPenalty = plugin.getConfig().getDouble("fishing.loot.quality_difficulty_penalty", 0.05);
+
+        double skill = Math.min(1.0, p.getLevel() * skillBonus);
+        double qualityScore = ch.baitTier * baitBonus + ch.rodLuck * luckBonus + skill;
+        if (perfect) {
+            qualityScore += perfectBonus;
+        }
+        qualityScore -= ch.profile.difficulty * difficultyPenalty;
+        qualityScore = Math.max(0.0, Math.min(0.65, qualityScore));
+
+        double iridiumChance = baseIridium + qualityScore * 0.2;
+        double goldChance = baseGold + qualityScore * 0.35;
+        double silverChance = baseSilver + qualityScore * 0.45;
+
+        double roll = random.nextDouble();
+        if (roll < iridiumChance) return FishQuality.IRIDIUM;
+        if (roll < iridiumChance + goldChance) return FishQuality.GOLD;
+        if (roll < iridiumChance + goldChance + silverChance) return FishQuality.SILVER;
+        return FishQuality.NORMAL;
+    }
+
+    private FishProfile buildFishProfile(FishData fish, Location loc, int baitTier, int rodPower, int rodLuck, int skillLevel) {
+        double difficulty = switch (fish.rarity()) {
+            case COMMON -> 0.7;
+            case UNCOMMON -> 0.95;
+            case RARE -> 1.2;
+            case EPIC -> 1.5;
+            case LEGENDARY -> 1.9;
+        };
+
+        World world = loc.getWorld();
+        boolean raining = world != null && world.hasStorm();
+        boolean thunder = world != null && world.isThundering();
+        boolean nightTime = world != null && world.getTime() >= 13000;
+        Biome biome = world != null ? world.getBiome(loc) : Biome.PLAINS;
+
+        if (raining) difficulty += 0.1;
+        if (thunder) difficulty += 0.15;
+        if (nightTime) difficulty += 0.1;
+
+        if (biome == Biome.RIVER || biome == Biome.OCEAN || biome == Biome.DEEP_OCEAN) {
+            difficulty -= 0.08;
+        } else if (biome == Biome.SWAMP || biome == Biome.MANGROVE_SWAMP) {
+            difficulty += 0.12;
+        }
+
+        difficulty -= baitTier * 0.06;
+        difficulty -= rodPower * 0.05;
+        difficulty -= Math.min(0.2, rodLuck * 0.02);
+        difficulty -= Math.min(0.25, skillLevel * 0.01);
+        difficulty = Math.max(0.55, Math.min(2.3, difficulty));
+
+        double aggression = Math.max(0.6, Math.min(2.0, difficulty));
+        double jitter = 0.8 + (random.nextDouble() * 0.4);
+        return new FishProfile(difficulty, aggression, jitter);
+    }
+
+    private ItemStack rollLootTable(List<LootEntry> table) {
+        double total = 0.0;
+        for (LootEntry entry : table) {
+            total += entry.weight();
+        }
+        double pick = random.nextDouble() * total;
+        double runningWeight = 0.0;
+        for (LootEntry entry : table) {
+            runningWeight += entry.weight();
+            if (pick <= runningWeight) {
+                int amount = entry.minAmount();
+                if (entry.maxAmount() > entry.minAmount()) {
+                    amount += random.nextInt(entry.maxAmount() - entry.minAmount() + 1);
+                }
+                return new ItemStack(entry.material(), amount);
+            }
+        }
+        LootEntry fallback = table.get(0);
+        return new ItemStack(fallback.material(), fallback.minAmount());
     }
 
     @EventHandler
@@ -1394,12 +1727,12 @@ public final class GFManager implements Listener {
         if (night) weight *= 1.08;
 
         // points/value
-        int points = (int) Math.round((weight * 5 + (rarity.ordinal() * 8)) * sharedPointsMultiplier);
-        int value = (int) Math.round(points * rarity.valueMult * sharedValueMultiplier);
+        int points = (int) Math.round((weight * 5 + (rarity.ordinal() * 8)));
+        int value = (int) Math.round(points * rarity.valueMult);
 
         String species = rollSpecies(rarity);
 
-        return new FishData(rarity, weight, points, value, false, species);
+        return new FishData(rarity, FishQuality.NORMAL, weight, points, value, false, species);
     }
 
     private FishRarity rollRarity(int baitTier, int rodLuck, boolean night) {
@@ -1445,28 +1778,83 @@ public final class GFManager implements Listener {
 
         double weight = pick.minWeight() + random.nextDouble() * (pick.maxWeight() - pick.minWeight());
         int basePoints = (int) Math.round((weight * 5 + (pick.rarity().ordinal() * 8)) * (1.0 + bonus));
-        int points = (int) Math.round(basePoints * sharedPointsMultiplier);
-        int value = (int) Math.round(points * pick.rarity().valueMult * sharedValueMultiplier);
-        return new FishData(pick.rarity(), weight, points, value, false, pick.name());
+        int points = (int) Math.round(basePoints);
+        int value = (int) Math.round(points * pick.rarity().valueMult);
+        return new FishData(pick.rarity(), FishQuality.NORMAL, weight, points, value, false, pick.name());
     }
+
+    private record FishingLoot(ItemStack mainItem, FishData fish, ItemStack treasureItem, List<ItemStack> bonusItems, boolean isTrash) {}
+
+    private record LootEntry(Material material, int minAmount, int maxAmount, double weight) {}
+
+    private record FishProfile(double difficulty, double aggression, double jitter) {}
 
     private static final class FishingChallenge {
         final FishData fish;
-        final int requiredPulls;
-        int pullsDone;
-        final long expireAt;
+        final FishProfile profile;
+        final int baitTier;
+        final int rodPower;
+        final int rodLuck;
+        final double zoneSize;
+        final double progressGain;
+        final double progressLoss;
+        final int timeLimitTicks;
+        final int failZeroTicks;
+        final int hudIntervalTicks;
+        final long startTick;
+        long inputUntilTick;
+        long nextTargetTick;
+        double progress;
+        double playerPos;
+        double playerVel;
+        double fishPos;
+        double fishVel;
+        double fishTarget;
+        int zeroTicks;
+        boolean missed;
         boolean completed;
-        long lastPullAt;
-        final long totalWindow;
+        boolean failed;
 
-        FishingChallenge(FishData fish, int requiredPulls, int pullsDone, long expireAt, boolean completed, long lastPullAt, long totalWindow) {
+        FishingChallenge(
+                FishData fish,
+                FishProfile profile,
+                int baitTier,
+                int rodPower,
+                int rodLuck,
+                double zoneSize,
+                double progressGain,
+                double progressLoss,
+                int timeLimitTicks,
+                int failZeroTicks,
+                long startTick,
+                int hudIntervalTicks,
+                double fishPos,
+                double fishTarget,
+                long nextTargetTick
+        ) {
             this.fish = fish;
-            this.requiredPulls = requiredPulls;
-            this.pullsDone = pullsDone;
-            this.expireAt = expireAt;
-            this.completed = completed;
-            this.lastPullAt = lastPullAt;
-            this.totalWindow = totalWindow;
+            this.profile = profile;
+            this.baitTier = baitTier;
+            this.rodPower = rodPower;
+            this.rodLuck = rodLuck;
+            this.zoneSize = zoneSize;
+            this.progressGain = progressGain;
+            this.progressLoss = progressLoss;
+            this.timeLimitTicks = timeLimitTicks;
+            this.failZeroTicks = failZeroTicks;
+            this.startTick = startTick;
+            this.hudIntervalTicks = Math.max(1, hudIntervalTicks);
+            this.fishPos = fishPos;
+            this.fishTarget = fishTarget;
+            this.nextTargetTick = nextTargetTick;
+            this.playerPos = 0.5;
+            this.playerVel = 0.0;
+            this.fishVel = 0.0;
+            this.progress = 0.0;
+            this.zeroTicks = 0;
+            this.missed = false;
+            this.completed = false;
+            this.failed = false;
         }
     }
 }
