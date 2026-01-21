@@ -137,6 +137,7 @@ public final class GFManager implements Listener {
             int oz = plugin.getConfig().getInt("house.offset_z", 0);
             this.houseInfo = HouseBuilder.computeInfo(altarBlock.getWorld(), altarBlock, ox, oz);
             bindHouseSlotMachine();
+            ensureStarterChestContents();
             updateTeamRods();
         }
 
@@ -169,6 +170,7 @@ public final class GFManager implements Listener {
         int ox = plugin.getConfig().getInt("house.offset_x", 8);
         int oz = plugin.getConfig().getInt("house.offset_z", 0);
         this.houseInfo = HouseBuilder.build(altarBlock.getWorld(), altarBlock, ox, oz);
+        ensureStarterChestContents();
         updateTeamRods();
         bindHouseSlotMachine();
 
@@ -405,6 +407,7 @@ public final class GFManager implements Listener {
 
     private void spawnLakeMonster() {
         if (altarBlock == null || altarBlock.getWorld() == null) return;
+        if (Bukkit.getOnlinePlayers().isEmpty()) return;
         World w = altarBlock.getWorld();
         Location spawn = altarBlock.clone().add(3, 0, 3);
         spawn.setY(w.getHighestBlockYAt(spawn) + 1);
@@ -436,6 +439,10 @@ public final class GFManager implements Listener {
             @Override
             public void run() {
                 if (!running || !isNight || lakeMonsterUuid == null) return;
+                if (Bukkit.getOnlinePlayers().isEmpty()) {
+                    stopLakeMonster();
+                    return;
+                }
                 Entity e = Bukkit.getEntity(lakeMonsterUuid);
                 if (!(e instanceof Ravager monster) || monster.isDead()) return;
                 if (random.nextDouble() < 0.5) {
@@ -493,15 +500,7 @@ public final class GFManager implements Listener {
     }
 
     private void clearNightMonsters() {
-        if (monsterTask != null) {
-            monsterTask.cancel();
-            monsterTask = null;
-        }
-        if (lakeMonsterUuid != null) {
-            Entity e = Bukkit.getEntity(lakeMonsterUuid);
-            if (e != null) e.remove();
-            lakeMonsterUuid = null;
-        }
+        stopLakeMonster();
         if (altarBlock != null && altarBlock.getWorld() != null) {
             World w = altarBlock.getWorld();
             for (Entity e : w.getEntities()) {
@@ -1092,6 +1091,67 @@ public final class GFManager implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         if (bossBar == null) return;
         bossBar.removePlayer(event.getPlayer());
+        if (Bukkit.getOnlinePlayers().isEmpty()) {
+            stopLakeMonster();
+        }
+    }
+
+    private void stopLakeMonster() {
+        if (monsterTask != null) {
+            monsterTask.cancel();
+            monsterTask = null;
+        }
+        if (lakeMonsterUuid != null) {
+            Entity e = Bukkit.getEntity(lakeMonsterUuid);
+            if (e != null) e.remove();
+            lakeMonsterUuid = null;
+        }
+    }
+
+    private void ensureStarterChestContents() {
+        if (houseInfo == null || houseInfo.starterChest() == null) return;
+        Block chestBlock = houseInfo.starterChest().getBlock();
+        if (!(chestBlock.getState() instanceof org.bukkit.block.Chest chest)) return;
+
+        Inventory inv = chest.getInventory();
+        int rodCount = 0;
+        int baitCount = 0;
+
+        for (int i = 0; i < inv.getSize(); i++) {
+            ItemStack it = inv.getItem(i);
+            if (it == null) continue;
+
+            if (GFItems.isStarterRod(it)) {
+                if (rodCount >= 4) {
+                    inv.setItem(i, null);
+                } else {
+                    rodCount++;
+                }
+                continue;
+            }
+
+            int baitTier = GFItems.getBaitTier(it);
+            if (baitTier == 1) {
+                int needed = 8 - baitCount;
+                if (needed <= 0) {
+                    inv.setItem(i, null);
+                } else if (it.getAmount() > needed) {
+                    it.setAmount(needed);
+                    baitCount += needed;
+                } else {
+                    baitCount += it.getAmount();
+                }
+            }
+        }
+
+        for (int i = rodCount; i < 4; i++) {
+            inv.addItem(GFItems.createStarterRod());
+        }
+        if (baitCount < 8) {
+            inv.addItem(GFItems.createBait(1, 8 - baitCount));
+        }
+
+        chest.update();
     }
 
     private FishData rollFish(int baitTier, int rodLuck, boolean night) {
