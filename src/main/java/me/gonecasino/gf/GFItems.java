@@ -177,7 +177,7 @@ public final class GFItems {
                 Component.text("Эффект: чаще попадается редкая рыба", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false)
         ));
         meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
-        meta.addEnchant(Enchantment.LUCK, 1, true);
+        meta.addEnchant(Enchantment.LUCK_OF_THE_SEA, 1, true);
         meta.getPersistentDataContainer().set(Keys.ITEM_TYPE, PersistentDataType.STRING, TYPE_ROD_LUCK);
         it.setItemMeta(meta);
         return it;
@@ -406,7 +406,7 @@ public final class GFItems {
             meta.addEnchant(Enchantment.LURE, Math.min(3, sharedPower), true);
         }
         if (sharedLuck > 0) {
-            meta.addEnchant(Enchantment.LUCK, Math.min(3, sharedLuck), true);
+            meta.addEnchant(Enchantment.LUCK_OF_THE_SEA, Math.min(3, sharedLuck), true);
         }
         meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
         rod.setItemMeta(meta);
