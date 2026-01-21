@@ -132,17 +132,26 @@ public final class GFManager implements Listener {
         int fishIndex = (int) Math.round(ch.fishPos * (length - 1));
         int playerIndex = (int) Math.round(ch.playerPos * (length - 1));
         int zoneRadius = (int) Math.round((ch.zoneSize * length) / 2.0);
-        Component bar = Component.empty();
+        Component bar = Component.text("⟦", NamedTextColor.DARK_AQUA);
         for (int i = 0; i < length; i++) {
             boolean inFishZone = Math.abs(i - fishIndex) <= zoneRadius;
-            if (i == playerIndex) {
-                NamedTextColor color = inFishZone ? NamedTextColor.GOLD : NamedTextColor.RED;
+            boolean isPlayer = i == playerIndex;
+            boolean isFish = i == fishIndex;
+            if (isPlayer && isFish) {
+                NamedTextColor color = inZone ? NamedTextColor.GOLD : NamedTextColor.RED;
+                bar = bar.append(Component.text("✦", color));
+            } else if (isPlayer) {
+                NamedTextColor color = inZone ? NamedTextColor.GOLD : NamedTextColor.RED;
                 bar = bar.append(Component.text("▲", color));
+            } else if (isFish) {
+                NamedTextColor color = inFishZone ? NamedTextColor.AQUA : NamedTextColor.BLUE;
+                bar = bar.append(Component.text("◉", color));
             } else {
                 NamedTextColor color = inFishZone ? NamedTextColor.GREEN : NamedTextColor.DARK_GRAY;
-                bar = bar.append(Component.text("█", color));
+                bar = bar.append(Component.text(inFishZone ? "▓" : "░", color));
             }
         }
+        bar = bar.append(Component.text("⟧", NamedTextColor.DARK_AQUA));
         int percent = (int) Math.round(ch.progress * 100.0);
         NamedTextColor stateColor = inZone ? NamedTextColor.GREEN : NamedTextColor.RED;
         int progressLen = 12;
