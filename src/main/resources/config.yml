@@ -9,14 +9,14 @@ quota:
 fishing:
   # Minimum and maximum pulls required (before rod power reduction)
   min_pulls: 3
-  max_pulls: 16
+  max_pulls: 18
   # Base time window in milliseconds
-  base_window_ms: 5200
+  base_window_ms: 7200
   # How much weight increases difficulty
   weight_to_pulls: 0.7
-  weight_to_window_ms: 65
+  weight_to_window_ms: 45
   # Minimum delay between pull clicks
-  pull_cooldown_ms: 220
+  pull_cooldown_ms: 240
 
 # Night-only fish settings (only with top bait)
 night_fish:

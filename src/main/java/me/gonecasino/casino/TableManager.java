@@ -32,13 +32,11 @@ public final class TableManager implements Listener {
     private final Map<String, TableType> tables = new HashMap<>(); // key: serialized block loc
 
     private final SlotManager slotManager;
-    private final PokerManager pokerManager;
 
     public TableManager(GoneCasinoPlugin plugin) {
         this.plugin = plugin;
         this.file = new File(plugin.getDataFolder(), "tables.yml");
         this.slotManager = new SlotManager(plugin);
-        this.pokerManager = new PokerManager(plugin);
     }
 
     public void load() {
@@ -107,10 +105,6 @@ public final class TableManager implements Listener {
         return res;
     }
 
-    public PokerManager poker() {
-        return pokerManager;
-    }
-
     public SlotManager slots() {
         return slotManager;
     }
@@ -137,7 +131,6 @@ public final class TableManager implements Listener {
 
         switch (type) {
             case SLOT -> slotManager.spin(player);
-            case POKER -> pokerManager.toggleSeat(player, block.getLocation());
         }
     }
 

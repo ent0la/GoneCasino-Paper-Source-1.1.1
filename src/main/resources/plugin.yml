@@ -12,9 +12,6 @@ commands:
   casino:
     description: Main command for GoneCasino
     usage: /casino
-  poker:
-    description: Texas Hold'em (simple)
-    usage: /poker
 
 permissions:
   gonecasino.admin:
