@@ -2,7 +2,6 @@ package me.gonecasino.gf;
 
 import me.gonecasino.GoneCasinoPlugin;
 import me.gonecasino.util.Text;
-import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -41,18 +40,10 @@ public final class KitCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        Block target = player.getTargetBlockExact(6);
-        if (target == null) {
-            player.sendMessage(Text.bad("Посмотрите на сундук (до 6 блоков)."));
-            return true;
-        }
-
-        if (!plugin.gf().populateKitChest(target)) {
-            player.sendMessage(Text.bad("Нужно смотреть на сундук."));
-            return true;
-        }
-
-        player.sendMessage(Text.ok("Стартовый набор добавлен в сундук."));
+        int given = plugin.gf().giveStarterRodsToOnlinePlayers();
+        int total = org.bukkit.Bukkit.getOnlinePlayers().size();
+        int skipped = Math.max(0, total - given);
+        player.sendMessage(Text.ok("Выдано удочек: " + given + ". Уже были: " + skipped + "."));
         return true;
     }
 
