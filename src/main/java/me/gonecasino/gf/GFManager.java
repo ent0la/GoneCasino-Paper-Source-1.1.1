@@ -69,6 +69,8 @@ public final class GFManager implements Listener {
     private int sharedWindowBonusMs = 0;
     private double sharedValueMultiplier = 1.0;
     private double sharedPointsMultiplier = 1.0;
+    private int sharedPullCooldownReductionMs = 0;
+    private int sharedPullReduction = 0;
 
     private org.bukkit.boss.BossBar bossBar;
 
@@ -127,11 +129,15 @@ public final class GFManager implements Listener {
         this.sharedWindowBonusMs = yml.getInt("shared.window_bonus_ms", 0);
         this.sharedValueMultiplier = yml.getDouble("shared.value_multiplier", 1.0);
         this.sharedPointsMultiplier = yml.getDouble("shared.points_multiplier", 1.0);
+        this.sharedPullCooldownReductionMs = yml.getInt("shared.pull_cooldown_reduction_ms", 0);
+        this.sharedPullReduction = yml.getInt("shared.pull_reduction", 0);
 
         if (altarBlock != null && altarBlock.getWorld() != null) {
             int ox = plugin.getConfig().getInt("house.offset_x", 8);
             int oz = plugin.getConfig().getInt("house.offset_z", 0);
             this.houseInfo = HouseBuilder.computeInfo(altarBlock.getWorld(), altarBlock, ox, oz);
+            bindHouseSlotMachine();
+            updateTeamRods();
         }
 
         // start always-on tasks (they do nothing if not running)
@@ -147,6 +153,8 @@ public final class GFManager implements Listener {
         yml.set("shared.window_bonus_ms", sharedWindowBonusMs);
         yml.set("shared.value_multiplier", sharedValueMultiplier);
         yml.set("shared.points_multiplier", sharedPointsMultiplier);
+        yml.set("shared.pull_cooldown_reduction_ms", sharedPullCooldownReductionMs);
+        yml.set("shared.pull_reduction", sharedPullReduction);
         try {
             yml.save(file);
         } catch (IOException e) {
@@ -161,6 +169,8 @@ public final class GFManager implements Listener {
         int ox = plugin.getConfig().getInt("house.offset_x", 8);
         int oz = plugin.getConfig().getInt("house.offset_z", 0);
         this.houseInfo = HouseBuilder.build(altarBlock.getWorld(), altarBlock, ox, oz);
+        updateTeamRods();
+        bindHouseSlotMachine();
 
         save();
 
@@ -333,6 +343,13 @@ public final class GFManager implements Listener {
                         pp.playSound(pp.getLocation(), Sound.AMBIENT_CAVE, 0.6f, 0.8f);
                     });
                 }
+                if (random.nextDouble() < 0.12) {
+                    forEachGamePlayer(pp -> {
+                        pp.playSound(pp.getLocation(), Sound.ENTITY_WARDEN_LISTENING, 0.5f, 0.6f);
+                        pp.spawnParticle(Particle.SOUL, pp.getLocation().add(0, 1.1, 0), 12, 0.35, 0.2, 0.35, 0.0);
+                        pp.sendActionBar(Component.text("Ты слышишь шёпот у воды...", NamedTextColor.DARK_PURPLE));
+                    });
+                }
             }
         }.runTaskTimer(plugin, 20L * 20, 20L * 20); // every 20s
     }
@@ -440,6 +457,39 @@ public final class GFManager implements Listener {
                 }
             }
         }.runTaskTimer(plugin, 40L, 60L);
+    }
+
+    private void bindHouseSlotMachine() {
+        if (houseInfo == null || houseInfo.slotMachine() == null) return;
+        Block slotBlock = houseInfo.slotMachine().getBlock();
+        if (slotBlock.getType() == Material.AIR) return;
+        plugin.tables().setTable(slotBlock, me.gonecasino.casino.TableType.SLOT);
+    }
+
+    private void updateTeamRods() {
+        forEachGamePlayer(p -> {
+            for (ItemStack it : p.getInventory().getContents()) {
+                if (it == null) continue;
+                if (!GFItems.isStarterRod(it)) continue;
+                GFItems.updateStarterRod(it, sharedRodPower, sharedRodLuck);
+            }
+            ItemStack offhand = p.getInventory().getItemInOffHand();
+            if (GFItems.isStarterRod(offhand)) {
+                GFItems.updateStarterRod(offhand, sharedRodPower, sharedRodLuck);
+            }
+        });
+
+        if (houseInfo != null && houseInfo.starterChest() != null) {
+            Block chestBlock = houseInfo.starterChest().getBlock();
+            if (chestBlock.getState() instanceof org.bukkit.block.Chest chest) {
+                for (ItemStack it : chest.getInventory().getContents()) {
+                    if (it == null) continue;
+                    if (!GFItems.isStarterRod(it)) continue;
+                    GFItems.updateStarterRod(it, sharedRodPower, sharedRodLuck);
+                }
+                chest.update();
+            }
+        }
     }
 
     private void clearNightMonsters() {
@@ -559,8 +609,10 @@ public final class GFManager implements Listener {
         inv.setItem(16, addPriceLore(GFItems.createQuotaReducer(plugin.getConfig().getInt("quota_reduce_amount", 10)), plugin.getConfig().getInt("shop.quota_reduce_item", 300)));
         inv.setItem(19, addPriceLore(GFItems.createFishingWindowBoost(plugin.getConfig().getInt("upgrades.window_bonus_ms", 450)), plugin.getConfig().getInt("shop.window_boost", 220)));
         inv.setItem(20, addPriceLore(GFItems.createCatchBonus(plugin.getConfig().getInt("upgrades.catch_bonus_percent", 12)), plugin.getConfig().getInt("shop.catch_bonus", 260)));
-        inv.setItem(22, addPriceLore(GFItems.createCampfireRecall(), plugin.getConfig().getInt("shop.campfire_recall", 120)));
-        inv.setItem(23, addPriceLore(GFItems.createAmuletSilence(), plugin.getConfig().getInt("shop.amulet_silence", 180)));
+        inv.setItem(21, addPriceLore(GFItems.createPullCooldownBoost(plugin.getConfig().getInt("upgrades.pull_cooldown_reduction_ms", 30)), plugin.getConfig().getInt("shop.pull_cooldown_boost", 200)));
+        inv.setItem(22, addPriceLore(GFItems.createPullReductionBoost(plugin.getConfig().getInt("upgrades.pull_reduction", 1)), plugin.getConfig().getInt("shop.pull_reduction_boost", 240)));
+        inv.setItem(23, addPriceLore(GFItems.createCampfireRecall(), plugin.getConfig().getInt("shop.campfire_recall", 120)));
+        inv.setItem(24, addPriceLore(GFItems.createAmuletSilence(), plugin.getConfig().getInt("shop.amulet_silence", 180)));
 
         return inv;
     }
@@ -703,6 +755,32 @@ public final class GFManager implements Listener {
                     p.playSound(p.getLocation(), Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.8f, 1.1f);
                     return;
                 }
+                if (GFItems.TYPE_PULL_COOLDOWN.equals(type)) {
+                    if (!running || !isInGame(p)) {
+                        p.sendMessage(Text.bad("Это работает только в режиме GONE Fishing."));
+                        return;
+                    }
+                    int bonus = plugin.getConfig().getInt("upgrades.pull_cooldown_reduction_ms", 30);
+                    int max = plugin.getConfig().getInt("upgrades.max_pull_cooldown_reduction_ms", 140);
+                    sharedPullCooldownReductionMs = Math.min(max, sharedPullCooldownReductionMs + bonus);
+                    hand.setAmount(hand.getAmount() - 1);
+                    p.sendMessage(Text.ok("Командные рывки быстрее: -" + sharedPullCooldownReductionMs + " мс."));
+                    p.playSound(p.getLocation(), Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.7f, 1.2f);
+                    return;
+                }
+                if (GFItems.TYPE_PULL_REDUCTION.equals(type)) {
+                    if (!running || !isInGame(p)) {
+                        p.sendMessage(Text.bad("Это работает только в режиме GONE Fishing."));
+                        return;
+                    }
+                    int bonus = plugin.getConfig().getInt("upgrades.pull_reduction", 1);
+                    int max = plugin.getConfig().getInt("upgrades.max_pull_reduction", 4);
+                    sharedPullReduction = Math.min(max, sharedPullReduction + bonus);
+                    hand.setAmount(hand.getAmount() - 1);
+                    p.sendMessage(Text.ok("Командная сложность снижена: -" + sharedPullReduction + " рыв."));
+                    p.playSound(p.getLocation(), Sound.BLOCK_AMETHYST_BLOCK_CHIME, 0.7f, 1.1f);
+                    return;
+                }
                 if (GFItems.TYPE_CAMPFIRE_RECALL.equals(type)) {
                     if (houseInfo == null) {
                         p.sendMessage(Text.bad("Дом ещё не создан."));
@@ -741,6 +819,7 @@ public final class GFManager implements Listener {
                         hand.setAmount(hand.getAmount() - 1);
                         p.sendMessage(Text.ok("Сила команды повышена до " + sharedRodPower + "."));
                         p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_USE, 0.7f, 1.2f);
+                        updateTeamRods();
                         return;
                     }
                     if (GFItems.TYPE_ROD_LUCK.equals(type)) {
@@ -753,6 +832,7 @@ public final class GFManager implements Listener {
                         hand.setAmount(hand.getAmount() - 1);
                         p.sendMessage(Text.ok("Удача команды повышена до " + sharedRodLuck + "."));
                         p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_USE, 0.7f, 1.2f);
+                        updateTeamRods();
                         return;
                     }
                 }
@@ -860,7 +940,8 @@ public final class GFManager implements Listener {
                 FishingChallenge ch = challenges.get(p.getUniqueId());
                 if (ch != null && !ch.completed && System.currentTimeMillis() <= ch.expireAt) {
                     long now = System.currentTimeMillis();
-                    int cooldown = plugin.getConfig().getInt("fishing.pull_cooldown_ms", 220);
+                    int baseCooldown = plugin.getConfig().getInt("fishing.pull_cooldown_ms", 220);
+                    int cooldown = Math.max(60, baseCooldown - sharedPullCooldownReductionMs);
                     if (now - ch.lastPullAt < cooldown) {
                         return;
                     }
@@ -909,7 +990,7 @@ public final class GFManager implements Listener {
 
             int req = (int) Math.round(basePulls + minPulls + fish.weightKg() * w2p);
             req = Math.max(minPulls, Math.min(maxPulls, req));
-            req = Math.max(1, req - rodPower); // power reduces needed tugs
+            req = Math.max(1, req - rodPower - sharedPullReduction); // power reduces needed tugs
 
             int baseWindow = plugin.getConfig().getInt("fishing.base_window_ms", 3500);
             double w2w = plugin.getConfig().getDouble("fishing.weight_to_window_ms", 85);
@@ -918,7 +999,7 @@ public final class GFManager implements Listener {
             long maxWindow = plugin.getConfig().getLong("fishing.max_window_ms", 9000L);
             window = Math.max(minWindow, Math.min(maxWindow, window));
 
-            FishingChallenge ch = new FishingChallenge(fish, req, 0, System.currentTimeMillis() + window, false, 0L);
+            FishingChallenge ch = new FishingChallenge(fish, req, 0, System.currentTimeMillis() + window, false, 0L, window);
             challenges.put(p.getUniqueId(), ch);
 
             p.sendActionBar(fishingActionBar(0, req));
@@ -938,8 +1019,21 @@ public final class GFManager implements Listener {
                 return;
             }
 
+            long now = System.currentTimeMillis();
+            double remaining = Math.max(0, ch.expireAt - now);
+            double perfectThreshold = plugin.getConfig().getDouble("fishing.perfect_threshold", 0.35);
+            double perfectBonus = plugin.getConfig().getDouble("fishing.perfect_bonus_percent", 15) / 100.0;
+            boolean perfect = remaining >= ch.totalWindow * perfectThreshold;
+
+            FishData fish = ch.fish;
+            if (perfect) {
+                int boostedPoints = (int) Math.round(fish.points() * (1.0 + perfectBonus));
+                int boostedValue = (int) Math.round(fish.value() * (1.0 + perfectBonus));
+                fish = new FishData(fish.rarity(), fish.weightKg(), boostedPoints, boostedValue, fish.cooked(), fish.speciesName());
+            }
+
             // replace caught item with custom fish
-            ItemStack custom = GFItems.createFishItem(ch.fish);
+            ItemStack custom = GFItems.createFishItem(fish);
             if (event.getCaught() instanceof Item itemEntity) {
                 itemEntity.setItemStack(custom);
             } else {
@@ -948,17 +1042,21 @@ public final class GFManager implements Listener {
             }
 
             p.sendMessage(Component.text("🎉 Улов: ", NamedTextColor.YELLOW)
-                    .append(Component.text(ch.fish.speciesName(), ch.fish.rarity().color))
-                    .append(Component.text(" • Вес: " + DF.format(ch.fish.weightKg()) + "кг • Очки: " + ch.fish.points(), NamedTextColor.GRAY))
+                    .append(Component.text(fish.speciesName(), fish.rarity().color))
+                    .append(Component.text(" • Вес: " + DF.format(fish.weightKg()) + "кг • Очки: " + fish.points(), NamedTextColor.GRAY))
             );
             forEachGamePlayer(pp -> {
                 if (pp.getUniqueId().equals(p.getUniqueId())) return;
                 pp.sendMessage(Component.text("🌊 " + p.getName() + " поймал: ", NamedTextColor.AQUA)
-                        .append(Component.text(ch.fish.speciesName(), ch.fish.rarity().color))
-                        .append(Component.text(" • Вес: " + DF.format(ch.fish.weightKg()) + "кг • Очки: " + ch.fish.points(), NamedTextColor.GRAY))
+                        .append(Component.text(fish.speciesName(), fish.rarity().color))
+                        .append(Component.text(" • Вес: " + DF.format(fish.weightKg()) + "кг • Очки: " + fish.points(), NamedTextColor.GRAY))
                 );
             });
             p.playSound(p.getLocation(), Sound.ENTITY_FISH_SWIM, 0.8f, 1.2f);
+            if (perfect) {
+                p.sendMessage(Text.ok("Идеальная подсечка! Бонус к награде."));
+                p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.6f);
+            }
         }
 
         // clean up on fail
@@ -987,6 +1085,7 @@ public final class GFManager implements Listener {
         if (!players.contains(player.getUniqueId())) return;
         bossBar.addPlayer(player);
         updateBossbar();
+        updateTeamRods();
     }
 
     @EventHandler
@@ -1002,25 +1101,7 @@ public final class GFManager implements Listener {
             return rollNightFish(rodLuck);
         }
 
-        // rarity roll
-        int luck = rodLuck * 2 + baitTier * 4 + (night ? 5 : 0);
-        int roll = random.nextInt(100) + 1 + luck;
-
-        FishRarity rarity;
-        if (roll >= 130) rarity = FishRarity.LEGENDARY;
-        else if (roll >= 112) rarity = FishRarity.EPIC;
-        else if (roll >= 95) rarity = FishRarity.RARE;
-        else if (roll >= 75) rarity = FishRarity.UNCOMMON;
-        else rarity = FishRarity.COMMON;
-
-        FishRarity minRarity = switch (baitTier) {
-            case 3 -> FishRarity.RARE;
-            case 2 -> FishRarity.UNCOMMON;
-            default -> FishRarity.COMMON;
-        };
-        if (rarity.ordinal() < minRarity.ordinal()) {
-            rarity = minRarity;
-        }
+        FishRarity rarity = rollRarity(baitTier, rodLuck, night);
 
         double minW = switch (rarity) {
             case COMMON -> 0.4;
@@ -1045,15 +1126,50 @@ public final class GFManager implements Listener {
         int points = (int) Math.round((weight * 5 + (rarity.ordinal() * 8)) * sharedPointsMultiplier);
         int value = (int) Math.round(points * rarity.valueMult * sharedValueMultiplier);
 
-        String species = switch (rarity) {
-            case COMMON -> "Треска";
-            case UNCOMMON -> "Лосось";
-            case RARE -> "Глубинная рыба";
-            case EPIC -> "Тёмный карп";
-            case LEGENDARY -> "Рыба-кошмар";
-        };
+        String species = rollSpecies(rarity);
 
         return new FishData(rarity, weight, points, value, false, species);
+    }
+
+    private FishRarity rollRarity(int baitTier, int rodLuck, boolean night) {
+        int tier = Math.max(0, Math.min(3, baitTier));
+        double[][] weights = {
+                {70, 20, 7, 2.5, 0.5},
+                {60, 25, 10, 4, 1},
+                {45, 30, 15, 7, 3},
+                {30, 30, 20, 12, 8}
+        };
+        double[] base = weights[tier].clone();
+
+        double luckBoost = rodLuck * 1.6 + (night ? 3.5 : 0);
+        base[2] += luckBoost * 0.6;
+        base[3] += luckBoost * 0.35;
+        base[4] += luckBoost * 0.2;
+        base[0] = Math.max(12, base[0] - luckBoost * 0.8);
+        base[1] = Math.max(8, base[1] - luckBoost * 0.3);
+
+        double total = 0;
+        for (double v : base) total += v;
+        double roll = random.nextDouble() * total;
+        double acc = 0;
+        for (int i = 0; i < base.length; i++) {
+            acc += base[i];
+            if (roll <= acc) {
+                return FishRarity.values()[i];
+            }
+        }
+        return FishRarity.COMMON;
+    }
+
+    private String rollSpecies(FishRarity rarity) {
+        List<String> pool = switch (rarity) {
+            case COMMON -> List.of("Треска", "Карась", "Плотва", "Окунь");
+            case UNCOMMON -> List.of("Лосось", "Сиг", "Речной форель", "Щука");
+            case RARE -> List.of("Глубинная рыба", "Серебряный сом", "Голубой линь");
+            case EPIC -> List.of("Тёмный карп", "Лунный осётр", "Сонный угорь");
+            case LEGENDARY -> List.of("Рыба-кошмар", "Клинок-рыба", "Звёздный скат");
+        };
+        return pool.get(random.nextInt(pool.size()));
     }
 
     private FishData rollNightFish(int rodLuck) {
@@ -1082,14 +1198,16 @@ public final class GFManager implements Listener {
         final long expireAt;
         boolean completed;
         long lastPullAt;
+        final long totalWindow;
 
-        FishingChallenge(FishData fish, int requiredPulls, int pullsDone, long expireAt, boolean completed, long lastPullAt) {
+        FishingChallenge(FishData fish, int requiredPulls, int pullsDone, long expireAt, boolean completed, long lastPullAt, long totalWindow) {
             this.fish = fish;
             this.requiredPulls = requiredPulls;
             this.pullsDone = pullsDone;
             this.expireAt = expireAt;
             this.completed = completed;
             this.lastPullAt = lastPullAt;
+            this.totalWindow = totalWindow;
         }
     }
 }

@@ -23,6 +23,7 @@ public final class Keys {
 
     public static NamespacedKey ROD_POWER;
     public static NamespacedKey ROD_LUCK;
+    public static NamespacedKey STARTER_ROD;
 
     public static NamespacedKey ITEM_TYPE;
     public static NamespacedKey GF_TRADER;
@@ -42,6 +43,7 @@ public final class Keys {
 
         ROD_POWER = new NamespacedKey(plugin, "rod_power");
         ROD_LUCK = new NamespacedKey(plugin, "rod_luck");
+        STARTER_ROD = new NamespacedKey(plugin, "starter_rod");
 
         ITEM_TYPE = new NamespacedKey(plugin, "item_type");
         GF_TRADER = new NamespacedKey(plugin, "gf_trader");
