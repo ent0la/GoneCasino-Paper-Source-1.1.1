@@ -145,9 +145,14 @@ public final class GFManager implements Listener {
         }
         int percent = (int) Math.round(ch.progress * 100.0);
         NamedTextColor stateColor = inZone ? NamedTextColor.GREEN : NamedTextColor.RED;
+        int progressLen = 12;
+        int filled = (int) Math.round(ch.progress * progressLen);
+        String progBar = "▰".repeat(Math.max(0, Math.min(progressLen, filled)))
+                + "▱".repeat(Math.max(0, progressLen - filled));
         return Component.text("🎣 ", NamedTextColor.AQUA)
                 .append(bar)
-                .append(Component.text(" " + percent + "%", stateColor));
+                .append(Component.text(" " + progBar + " ", NamedTextColor.YELLOW))
+                .append(Component.text(percent + "%", stateColor));
     }
 
     public GFManager(GoneCasinoPlugin plugin) {
@@ -1342,28 +1347,6 @@ public final class GFManager implements Listener {
                 p.playSound(p.getLocation(), Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 0.6f, 0.6f);
                 continue;
             }
-        }
-
-        double baseSpeed = plugin.getConfig().getDouble("fishing.minigame.fish_base_speed", 0.018);
-        double variance = plugin.getConfig().getDouble("fishing.minigame.fish_speed_variance", 0.02);
-        double maxSpeed = baseSpeed + variance * ch.profile.aggression;
-        double inertia = plugin.getConfig().getDouble("fishing.minigame.fish_inertia", 0.9);
-        double jerk = plugin.getConfig().getDouble("fishing.minigame.fish_jerk", 0.015);
-
-        double steer = (ch.fishTarget - ch.fishPos) * (0.05 + ch.profile.aggression * 0.06);
-        ch.fishVel += steer + (random.nextDouble() * 2 - 1) * jerk * ch.profile.jitter;
-        ch.fishVel *= inertia;
-        ch.fishVel = Math.max(-maxSpeed, Math.min(maxSpeed, ch.fishVel));
-        ch.fishPos += ch.fishVel;
-
-        if (ch.fishPos < 0.0) {
-            ch.fishPos = 0.0;
-            ch.fishVel = Math.abs(ch.fishVel) * 0.6;
-        } else if (ch.fishPos > 1.0) {
-            ch.fishPos = 1.0;
-            ch.fishVel = -Math.abs(ch.fishVel) * 0.6;
-        }
-    }
 
             if (tickCounter % ch.hudIntervalTicks == 0) {
                 p.sendActionBar(fishingHud(ch, inZone));
@@ -1401,27 +1384,27 @@ public final class GFManager implements Listener {
     private void updateFishMotion(FishingChallenge ch) {
         if (tickCounter >= ch.nextTargetTick) {
             ch.fishTarget = 0.1 + random.nextDouble() * 0.8;
-            int minTicks = plugin.getConfig().getInt("fishing.minigame.target_change_min_ticks", 8);
-            int maxTicks = plugin.getConfig().getInt("fishing.minigame.target_change_max_ticks", 24);
+            int minTicks = plugin.getConfig().getInt("fishing.minigame.target_change_min_ticks", 12);
+            int maxTicks = plugin.getConfig().getInt("fishing.minigame.target_change_max_ticks", 32);
             ch.nextTargetTick = tickCounter + minTicks + random.nextInt(Math.max(1, maxTicks - minTicks + 1));
 
-            double burstChance = plugin.getConfig().getDouble("fishing.minigame.fish_burst_chance", 0.05);
-            double burstForce = plugin.getConfig().getDouble("fishing.minigame.fish_burst_force", 0.08);
+            double burstChance = plugin.getConfig().getDouble("fishing.minigame.fish_burst_chance", 0.035);
+            double burstForce = plugin.getConfig().getDouble("fishing.minigame.fish_burst_force", 0.05);
             if (random.nextDouble() < burstChance * ch.profile.aggression) {
                 double dir = random.nextBoolean() ? 1.0 : -1.0;
                 ch.fishVel += dir * burstForce * ch.profile.aggression;
             }
         }
 
-        double baseSpeed = plugin.getConfig().getDouble("fishing.minigame.fish_base_speed", 0.012);
-        double variance = plugin.getConfig().getDouble("fishing.minigame.fish_speed_variance", 0.012);
-        double aggressionFactor = 0.6 + ch.profile.aggression * 0.4;
+        double baseSpeed = plugin.getConfig().getDouble("fishing.minigame.fish_base_speed", 0.009);
+        double variance = plugin.getConfig().getDouble("fishing.minigame.fish_speed_variance", 0.009);
+        double aggressionFactor = 0.5 + ch.profile.aggression * 0.3;
         double maxSpeed = baseSpeed + variance * aggressionFactor;
         double inertia = plugin.getConfig().getDouble("fishing.minigame.fish_inertia", 0.9);
-        double jerk = plugin.getConfig().getDouble("fishing.minigame.fish_jerk", 0.01);
-        double steerStrength = plugin.getConfig().getDouble("fishing.minigame.fish_steer_strength", 0.045);
+        double jerk = plugin.getConfig().getDouble("fishing.minigame.fish_jerk", 0.008);
+        double steerStrength = plugin.getConfig().getDouble("fishing.minigame.fish_steer_strength", 0.035);
 
-        double steer = (ch.fishTarget - ch.fishPos) * steerStrength * (0.8 + ch.profile.aggression * 0.2);
+        double steer = (ch.fishTarget - ch.fishPos) * steerStrength * (0.75 + ch.profile.aggression * 0.18);
         ch.fishVel += steer + (random.nextDouble() * 2 - 1) * jerk * ch.profile.jitter;
         ch.fishVel *= inertia;
         ch.fishVel = Math.max(-maxSpeed, Math.min(maxSpeed, ch.fishVel));
