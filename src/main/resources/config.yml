@@ -5,34 +5,6 @@ quota:
   base: 40
   increase_per_day: 15
 
-# Fishing minigame tuning (Stardew-style)
-fishing:
-  # Perfect catch bonus (applies to points/value)
-  perfect_bonus_percent: 15
-  # Input feel
-  input_click_ticks: 2
-  minigame:
-    hud_interval_ticks: 4
-    time_limit_ticks: 420
-  loot:
-    treasure_chance: 0.08
-    trash_chance: 0.07
-    perfect_treasure_bonus: 0.08
-    quality_base_silver: 0.25
-    quality_base_gold: 0.12
-    quality_base_iridium: 0.04
-    quality_bait_bonus: 0.05
-    quality_luck_bonus: 0.03
-    quality_skill_bonus: 0.004
-    quality_perfect_bonus: 0.15
-    quality_difficulty_penalty: 0.05
-
-# Night-only fish settings (only with top bait)
-night_fish:
-  chance: 0.18
-  required_bait_tier: 3
-  points_bonus: 0.25
-
 # Cooked fish multipliers
 cooking:
   seconds: 5
