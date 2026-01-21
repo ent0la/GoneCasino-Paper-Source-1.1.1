@@ -546,7 +546,7 @@ public final class GFManager implements Listener {
     }
 
     private void updateTeamRods() {
-        forEachGamePlayer(p -> {
+        for (Player p : Bukkit.getOnlinePlayers()) {
             for (ItemStack it : p.getInventory().getContents()) {
                 if (it == null) continue;
                 if (!GFItems.isStarterRod(it)) continue;
@@ -556,7 +556,7 @@ public final class GFManager implements Listener {
             if (GFItems.isStarterRod(offhand)) {
                 GFItems.updateStarterRod(offhand, sharedRodPower, sharedRodLuck);
             }
-        });
+        }
 
         if (houseInfo != null && houseInfo.starterChest() != null) {
             Block chestBlock = houseInfo.starterChest().getBlock();
@@ -571,6 +571,33 @@ public final class GFManager implements Listener {
         }
 
         updateKitChestRods();
+    }
+
+    public int giveStarterRodsToOnlinePlayers() {
+        int given = 0;
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (hasFishingRod(player)) {
+                continue;
+            }
+            ItemStack rod = GFItems.createStarterRod();
+            GFItems.updateStarterRod(rod, sharedRodPower, sharedRodLuck);
+            player.getInventory().addItem(rod);
+            given++;
+        }
+        return given;
+    }
+
+    private static boolean hasFishingRod(Player player) {
+        if (player == null) return false;
+        ItemStack main = player.getInventory().getItemInMainHand();
+        if (main != null && main.getType() == Material.FISHING_ROD) return true;
+        ItemStack offhand = player.getInventory().getItemInOffHand();
+        if (offhand != null && offhand.getType() == Material.FISHING_ROD) return true;
+        for (ItemStack it : player.getInventory().getContents()) {
+            if (it == null) continue;
+            if (it.getType() == Material.FISHING_ROD) return true;
+        }
+        return false;
     }
 
     private void updateKitChestRods() {
