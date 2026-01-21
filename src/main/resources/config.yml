@@ -22,15 +22,15 @@ fishing:
     player_accel_down: 0.03
     player_max_speed: 0.065
     player_drag: 0.88
-    fish_base_speed: 0.0065
-    fish_speed_variance: 0.006
-    fish_inertia: 0.93
-    fish_jerk: 0.005
-    fish_steer_strength: 0.026
-    fish_burst_chance: 0.025
-    fish_burst_force: 0.035
-    target_change_min_ticks: 16
-    target_change_max_ticks: 36
+    fish_base_speed: 0.005
+    fish_speed_variance: 0.004
+    fish_inertia: 0.95
+    fish_jerk: 0.0035
+    fish_steer_strength: 0.022
+    fish_burst_chance: 0.02
+    fish_burst_force: 0.028
+    target_change_min_ticks: 18
+    target_change_max_ticks: 40
     zone_base: 0.36
     zone_min: 0.16
     zone_max: 0.5
