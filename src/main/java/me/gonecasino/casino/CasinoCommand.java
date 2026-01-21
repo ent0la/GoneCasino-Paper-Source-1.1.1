@@ -32,7 +32,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
             if (player.hasPermission("gonecasino.admin")) {
                 player.sendMessage(Text.info("/casino givechips <сумма>"));
             }
-            player.sendMessage(Text.info("/casino gf join|leave|start|stop|status"));
+            player.sendMessage(Text.info("/casino gf join|leave|start|stop|status|reset"));
             if (player.hasPermission("gonecasino.admin")) {
                 player.sendMessage(Text.info("/casino setaltar"));
                 player.sendMessage(Text.info("/casino delaltar"));
@@ -190,6 +190,13 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
                         plugin.gf().stop(player);
                     }
                     case "status" -> plugin.gf().status(player);
+                    case "reset" -> {
+                        if (!player.hasPermission("gonecasino.admin")) {
+                            player.sendMessage(Text.bad("Нет прав."));
+                            return true;
+                        }
+                        plugin.gf().resetProgress(player);
+                    }
                     default -> player.sendMessage(Text.bad("Неизвестно: " + a));
                 }
                 return true;
@@ -206,7 +213,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
             return prefix(args[0], Arrays.asList("balance", "pay", "givechips", "gf", "setaltar", "delaltar", "settable", "deltable"));
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("gf")) {
-            return prefix(args[1], Arrays.asList("join", "leave", "start", "stop", "status"));
+            return prefix(args[1], Arrays.asList("join", "leave", "start", "stop", "status", "reset"));
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("settable")) {
             return prefix(args[1], List.of("SLOT"));

@@ -80,4 +80,12 @@ public final class ChipBank {
             economy.depositPlayer(fallbackAccount, amount);
         }
     }
+
+    public double clear() {
+        if (!isAvailable()) return 0.0;
+        double balance = getBalance();
+        if (balance <= 0) return 0.0;
+        take(balance);
+        return balance;
+    }
 }

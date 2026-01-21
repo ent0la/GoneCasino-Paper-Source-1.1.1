@@ -15,12 +15,16 @@ import org.bukkit.persistence.PersistentDataType;
 
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class GFItems {
     private GFItems() {}
 
     private static final DecimalFormat DF = new DecimalFormat("0.00");
+    private static final int RAW_FISH_MODEL_BASE = 1000;
+    private static final int COOKED_FISH_MODEL_BASE = 2000;
 
     public static final String TYPE_BAIT = "bait";
     public static final String TYPE_ROD_POWER = "rod_power";
@@ -33,6 +37,70 @@ public final class GFItems {
     public static final String TYPE_PULL_COOLDOWN = "pull_cooldown";
     public static final String TYPE_PULL_REDUCTION = "pull_reduction";
     public static final String TYPE_STARTER_ROD = "starter_rod";
+
+    private static final List<String> COMMON_SPECIES = List.of(
+            "Треска",
+            "Карась",
+            "Плотва",
+            "Окунь",
+            "Краснопёрка",
+            "Ёрш",
+            "Горчак",
+            "Уклейка",
+            "Подлещик",
+            "Сопа"
+    );
+    private static final List<String> UNCOMMON_SPECIES = List.of(
+            "Лосось",
+            "Сиг",
+            "Речной форель",
+            "Щука",
+            "Голавль",
+            "Язь",
+            "Хариус",
+            "Судак",
+            "Лещ",
+            "Налим"
+    );
+    private static final List<String> RARE_SPECIES = List.of(
+            "Глубинная рыба",
+            "Серебряный сом",
+            "Голубой линь",
+            "Чернопёрый окунь",
+            "Песчаный карп",
+            "Болотный осётр",
+            "Золотой карась",
+            "Синий сом"
+    );
+    private static final List<String> EPIC_SPECIES = List.of(
+            "Тёмный карп",
+            "Лунный осётр",
+            "Сонный угорь",
+            "Призрачный лосось",
+            "Северная щука-гигант",
+            "Коралловый сом",
+            "Грозовой угорь",
+            "Алый марлин"
+    );
+    private static final List<String> LEGENDARY_SPECIES = List.of(
+            "Рыба-кошмар",
+            "Клинок-рыба",
+            "Звёздный скат",
+            "Хрустальный осётр",
+            "Морозная щука",
+            "Песнь бездны",
+            "Сердце океана",
+            "Владыка глубин"
+    );
+    private static final List<NightFishSpec> NIGHT_FISH_POOL = List.of(
+            new NightFishSpec("Лунная щука", FishRarity.RARE, 3.0, 6.5),
+            new NightFishSpec("Тень-угорь", FishRarity.EPIC, 6.5, 12.0),
+            new NightFishSpec("Бездна-катран", FishRarity.LEGENDARY, 11.0, 19.0),
+            new NightFishSpec("Шепчущий сом", FishRarity.RARE, 2.5, 6.0),
+            new NightFishSpec("Глаз бездны", FishRarity.LEGENDARY, 12.0, 20.0)
+    );
+
+    private static final Map<String, Integer> FISH_MODEL_INDEX = buildFishModelIndex();
 
     public static ItemStack createBait(int tier, int amount) {
         Material mat = switch (tier) {
@@ -254,6 +322,10 @@ public final class GFItems {
         lore.add(Component.text("Очки: " + fish.points(), NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
         lore.add(Component.text("Цена: " + fish.value() + " фишек", NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false));
         meta.lore(lore);
+        Integer modelData = getFishModelData(fish.speciesName(), fish.cooked());
+        if (modelData != null) {
+            meta.setCustomModelData(modelData);
+        }
 
         PersistentDataContainer pdc = meta.getPersistentDataContainer();
         pdc.set(Keys.FISH, PersistentDataType.BYTE, (byte) 1);
@@ -266,6 +338,20 @@ public final class GFItems {
 
         it.setItemMeta(meta);
         return it;
+    }
+
+    public static List<String> getSpeciesPool(FishRarity rarity) {
+        return switch (rarity) {
+            case COMMON -> COMMON_SPECIES;
+            case UNCOMMON -> UNCOMMON_SPECIES;
+            case RARE -> RARE_SPECIES;
+            case EPIC -> EPIC_SPECIES;
+            case LEGENDARY -> LEGENDARY_SPECIES;
+        };
+    }
+
+    public static List<NightFishSpec> getNightFishPool() {
+        return NIGHT_FISH_POOL;
     }
 
     public static boolean hasType(ItemStack it, String type) {
@@ -357,4 +443,39 @@ public final class GFItems {
         }
         return false;
     }
+
+    private static Integer getFishModelData(String speciesName, boolean cooked) {
+        if (speciesName == null || speciesName.isBlank()) return null;
+        Integer index = FISH_MODEL_INDEX.get(speciesName);
+        if (index == null) return null;
+        return (cooked ? COOKED_FISH_MODEL_BASE : RAW_FISH_MODEL_BASE) + index;
+    }
+
+    private static Map<String, Integer> buildFishModelIndex() {
+        Map<String, Integer> map = new LinkedHashMap<>();
+        int idx = 1;
+        for (String name : COMMON_SPECIES) {
+            map.put(name, idx++);
+        }
+        for (String name : UNCOMMON_SPECIES) {
+            map.put(name, idx++);
+        }
+        for (String name : RARE_SPECIES) {
+            map.put(name, idx++);
+        }
+        for (String name : EPIC_SPECIES) {
+            map.put(name, idx++);
+        }
+        for (String name : LEGENDARY_SPECIES) {
+            map.put(name, idx++);
+        }
+        for (NightFishSpec spec : NIGHT_FISH_POOL) {
+            if (!map.containsKey(spec.name())) {
+                map.put(spec.name(), idx++);
+            }
+        }
+        return map;
+    }
+
+    public record NightFishSpec(String name, FishRarity rarity, double minWeight, double maxWeight) {}
 }
