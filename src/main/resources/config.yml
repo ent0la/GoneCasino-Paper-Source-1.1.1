@@ -9,31 +9,14 @@ quota:
 fishing:
   # Perfect catch bonus (applies to points/value)
   perfect_bonus_percent: 15
-  # Input feel + physics
-  input_hold_ticks: 6
+  # Input feel
+  input_click_ticks: 2
   minigame:
-    bar_length: 30
     hud_interval_ticks: 4
     progress_gain: 0.02
     progress_loss: 0.02
     time_limit_ticks: 420
     fail_zero_ticks: 40
-    player_accel_up: 0.035
-    player_accel_down: 0.03
-    player_max_speed: 0.065
-    player_drag: 0.88
-    fish_base_speed: 0.005
-    fish_speed_variance: 0.004
-    fish_inertia: 0.95
-    fish_jerk: 0.0035
-    fish_steer_strength: 0.022
-    fish_burst_chance: 0.02
-    fish_burst_force: 0.028
-    target_change_min_ticks: 18
-    target_change_max_ticks: 40
-    zone_base: 0.36
-    zone_min: 0.16
-    zone_max: 0.5
   loot:
     treasure_chance: 0.08
     trash_chance: 0.07
