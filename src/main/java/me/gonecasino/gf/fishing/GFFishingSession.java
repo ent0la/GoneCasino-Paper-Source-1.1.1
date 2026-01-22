@@ -1,9 +1,8 @@
 package me.gonecasino.gf.fishing;
 
 import me.gonecasino.gf.FishRarity;
-import org.bukkit.entity.Player;
-
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 public final class GFFishingSession {
     private final UUID playerId;
@@ -86,7 +85,7 @@ public final class GFFishingSession {
         this.fishTarget = -1;
     }
 
-    public void tick(Player player, boolean inputUp) {
+    public void tick(boolean inputUp) {
         totalTicks++;
         timeLeftTicks--;
 
@@ -115,14 +114,15 @@ public final class GFFishingSession {
         }
 
         if (!fishIsIdle && (fishTarget == -1 || Math.abs(fishPos - fishTarget) < 1.2)) {
-            int distance = avgDistance + (int) Math.round((player.getRandom().nextDouble() * 2 - 1) * moveVariation);
-            int dir = player.getRandom().nextBoolean() ? 1 : -1;
+            ThreadLocalRandom random = ThreadLocalRandom.current();
+            int distance = avgDistance + (int) Math.round((random.nextDouble() * 2 - 1) * moveVariation);
+            int dir = random.nextBoolean() ? 1 : -1;
             int target = (int) Math.round(fishPos + dir * distance);
             target = Math.max(0, Math.min(maxHeight, target));
             fishTarget = target;
-            if (player.getRandom().nextDouble() < 0.22) {
+            if (random.nextDouble() < 0.22) {
                 fishIsIdle = true;
-                fishIdleTicks = idleTimeTicks + player.getRandom().nextInt(5);
+                fishIdleTicks = idleTimeTicks + random.nextInt(5);
                 fishVelocity *= 0.5;
             }
         }

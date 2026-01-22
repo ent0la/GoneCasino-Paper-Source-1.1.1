@@ -1532,7 +1532,7 @@ public final class GFManager implements Listener {
                         continue;
                     }
 
-                    session.tick(player, player.isSneaking());
+                    session.tick(player.isSneaking());
                     updateSessionUi(player, session);
 
                     if (session.isSuccess()) {
