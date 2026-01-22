@@ -297,7 +297,6 @@ public final class GFManager implements Listener {
 
     public void leave(Player p) {
         players.remove(p.getUniqueId());
-        challenges.remove(p.getUniqueId());
         cancelFishingSession(p, "Вы вышли из GONE Fishing.");
         if (bossBar != null) bossBar.removePlayer(p);
         p.sendMessage(Text.info("Вы вышли из GONE Fishing."));
@@ -341,7 +340,6 @@ public final class GFManager implements Listener {
         quotaMet = false;
         quotaProgress = 0;
         quotaRequired = 0;
-        challenges.clear();
 
         despawnTrader();
         clearNightMonsters();
@@ -365,7 +363,6 @@ public final class GFManager implements Listener {
             task.cancel();
         }
         cooking.clear();
-        challenges.clear();
         clearFishingSessions();
 
         pendingQuotaReduction = 0;
@@ -1365,17 +1362,17 @@ public final class GFManager implements Listener {
         String promptText = plugin.getConfig().getString("resourcepack.prompt", "Для корректного отображения рыбы нужен ресурспак GONE Fishing.");
         boolean force = plugin.getConfig().getBoolean("resourcepack.force", false);
 
-        Component prompt = Component.text(promptText, NamedTextColor.YELLOW).decoration(TextDecoration.ITALIC, false);
         if (hashHex != null && !hashHex.isBlank()) {
             byte[] hash = parseSha1(hashHex.trim());
             if (hash != null) {
-                player.setResourcePack(url, hash, prompt, force);
+                player.sendMessage(Text.info(promptText));
+                player.setResourcePack(url, hash, force);
             } else {
                 plugin.getLogger().warning("Invalid resourcepack sha1 in config.yml, sending without hash.");
-                player.setResourcePack(url, prompt, force);
+                player.setResourcePack(url, promptText, force);
             }
         } else {
-            player.setResourcePack(url, prompt, force);
+            player.setResourcePack(url, promptText, force);
         }
     }
 
