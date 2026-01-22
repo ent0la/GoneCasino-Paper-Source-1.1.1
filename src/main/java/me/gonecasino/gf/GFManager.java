@@ -1,11 +1,13 @@
 package me.gonecasino.gf;
 
 import me.gonecasino.GoneCasinoPlugin;
+import me.gonecasino.gf.fishing.GFFishingSession;
 import me.gonecasino.util.LocUtil;
 import me.gonecasino.util.Keys;
 import me.gonecasino.util.Text;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import net.kyori.adventure.title.Title;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.*;
@@ -16,12 +18,19 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.CreatureSpawnEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerBedEnterEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
+import org.bukkit.event.player.PlayerFishEvent;
+import org.bukkit.event.player.PlayerItemBreakEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerResourcePackStatusEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.Event;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -38,6 +47,7 @@ import java.io.IOException;
 import java.text.DecimalFormat;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * GONE Fishing game loop + trader + fishing overhaul.
@@ -92,6 +102,16 @@ public final class GFManager implements Listener {
 
     // fishing
     private static final DecimalFormat DF = new DecimalFormat("0.00");
+    private static final int ACTIONBAR_WIDTH = 30;
+    private static final Component BAR_OPEN = Component.text("[", NamedTextColor.DARK_GRAY);
+    private static final Component BAR_CLOSE = Component.text("]", NamedTextColor.DARK_GRAY);
+    private static final String BACKGROUND_CHAR = "·";
+    private static final String BAR_CHAR = "█";
+    private static final String FISH_CHAR = "●";
+
+    private final Map<UUID, GFFishingSession> fishingSessions = new ConcurrentHashMap<>();
+    private final Map<UUID, org.bukkit.boss.BossBar> fishingBossBars = new ConcurrentHashMap<>();
+    private BukkitTask fishingTickTask;
 
     // cooking tasks
     private final Map<UUID, BukkitTask> cooking = new HashMap<>();
@@ -151,6 +171,8 @@ public final class GFManager implements Listener {
 
         // start always-on tasks (they do nothing if not running)
         startTasks();
+
+        logFishModelInfo();
     }
 
     public void save() {
@@ -253,6 +275,7 @@ public final class GFManager implements Listener {
         players.add(p.getUniqueId());
         p.sendMessage(Text.ok("Вы вошли в GONE Fishing. Игроков: " + players.size()));
         if (bossBar != null) bossBar.addPlayer(p);
+        applyResourcePack(p);
     }
 
     public void joinAll(Player requester) {
@@ -266,6 +289,7 @@ public final class GFManager implements Listener {
                 joined++;
                 online.sendMessage(Text.ok("Вы вошли в GONE Fishing."));
                 if (bossBar != null) bossBar.addPlayer(online);
+                applyResourcePack(online);
             }
         }
         requester.sendMessage(Text.ok("Подключено игроков: " + joined));
@@ -273,7 +297,7 @@ public final class GFManager implements Listener {
 
     public void leave(Player p) {
         players.remove(p.getUniqueId());
-        challenges.remove(p.getUniqueId());
+        cancelFishingSession(p, "Вы вышли из GONE Fishing.");
         if (bossBar != null) bossBar.removePlayer(p);
         p.sendMessage(Text.info("Вы вышли из GONE Fishing."));
     }
@@ -296,7 +320,10 @@ public final class GFManager implements Listener {
         bossBar = Bukkit.createBossBar("", org.bukkit.boss.BarColor.YELLOW, org.bukkit.boss.BarStyle.SEGMENTED_10);
         for (UUID uuid : players) {
             Player p = Bukkit.getPlayer(uuid);
-            if (p != null) bossBar.addPlayer(p);
+            if (p != null) {
+                bossBar.addPlayer(p);
+                applyResourcePack(p);
+            }
         }
 
         if (isNight) {
@@ -313,7 +340,6 @@ public final class GFManager implements Listener {
         quotaMet = false;
         quotaProgress = 0;
         quotaRequired = 0;
-        challenges.clear();
 
         despawnTrader();
         clearNightMonsters();
@@ -322,6 +348,7 @@ public final class GFManager implements Listener {
             bossBar.removeAll();
             bossBar = null;
         }
+        clearFishingSessions();
 
         admin.sendMessage(Text.ok("GONE Fishing остановлен."));
     }
@@ -336,7 +363,7 @@ public final class GFManager implements Listener {
             task.cancel();
         }
         cooking.clear();
-        challenges.clear();
+        clearFishingSessions();
 
         pendingQuotaReduction = 0;
         sharedRodPower = 0;
@@ -1164,15 +1191,109 @@ public final class GFManager implements Listener {
         bossBar.addPlayer(player);
         updateBossbar();
         updateTeamRods();
+        applyResourcePack(player);
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
+        cancelFishingSession(event.getPlayer(), "Вы покинули игру.");
         if (bossBar == null) return;
         bossBar.removePlayer(event.getPlayer());
         if (Bukkit.getOnlinePlayers().isEmpty()) {
             stopLakeMonster();
         }
+    }
+
+    @EventHandler
+    public void onPlayerFish(PlayerFishEvent event) {
+        Player player = event.getPlayer();
+        if (!running || !isInGame(player)) return;
+        ItemStack rod = player.getInventory().getItemInMainHand();
+        if (rod == null || rod.getType() != Material.FISHING_ROD) return;
+        if (plugin.getConfig().getBoolean("fishing_minigame.only_starter_rod", true)
+                && !GFItems.isStarterRod(rod)) {
+            return;
+        }
+
+        GFFishingSession active = fishingSessions.get(player.getUniqueId());
+        if (active != null) {
+            event.setCancelled(true);
+            event.setExpToDrop(0);
+            if (event.getCaught() != null) {
+                event.getCaught().remove();
+            }
+            if (event.getState() == PlayerFishEvent.State.REEL_IN) {
+                cancelFishingSession(player, "Вы прекратили вываживание.");
+            }
+            return;
+        }
+
+        if (event.getState() != PlayerFishEvent.State.BITE) return;
+        startFishingSession(player, event.getHook());
+        event.setCancelled(true);
+        event.setExpToDrop(0);
+        if (event.getCaught() != null) {
+            event.getCaught().remove();
+        }
+    }
+
+    @EventHandler
+    public void onPlayerSwapHandItems(PlayerSwapHandItemsEvent event) {
+        Player player = event.getPlayer();
+        GFFishingSession session = fishingSessions.get(player.getUniqueId());
+        if (session == null) return;
+        if (!plugin.getConfig().getBoolean("fishing_minigame.dash.enabled", true)) return;
+        event.setCancelled(true);
+
+        long baseCooldown = plugin.getConfig().getLong("fishing_minigame.dash.cooldown_ms", 1200L);
+        long cooldown = Math.max(150L, baseCooldown - sharedPullCooldownReductionMs);
+        double bonus = plugin.getConfig().getDouble("fishing_minigame.dash.points_bonus", 6.0);
+        boolean dashed = session.tryDash(System.currentTimeMillis(), cooldown, bonus);
+        if (dashed) {
+            player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_ATTACK_SWEEP, 0.7f, 1.5f);
+            player.spawnParticle(Particle.CRIT, player.getLocation().add(0, 1.0, 0), 8, 0.25, 0.25, 0.25, 0.05);
+        } else {
+            player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.4f, 0.7f);
+        }
+    }
+
+    @EventHandler
+    public void onResourcePackStatus(PlayerResourcePackStatusEvent event) {
+        if (!running) return;
+        Player player = event.getPlayer();
+        if (!isInGame(player)) return;
+
+        boolean force = plugin.getConfig().getBoolean("resourcepack.force", false);
+        if (event.getStatus() == PlayerResourcePackStatusEvent.Status.DECLINED
+                || event.getStatus() == PlayerResourcePackStatusEvent.Status.FAILED_DOWNLOAD) {
+            if (force) {
+                player.sendMessage(Text.bad("Для GONE Fishing нужен ресурспак. Вы исключены из режима."));
+                leave(player);
+            } else {
+                player.sendMessage(Text.info("Без ресурспака рыба будет выглядеть как обычная треска."));
+            }
+        }
+    }
+
+    @EventHandler
+    public void onPlayerTeleport(PlayerTeleportEvent event) {
+        cancelFishingSession(event.getPlayer(), "Вы сменили локацию.");
+    }
+
+    @EventHandler
+    public void onPlayerChangedWorld(PlayerChangedWorldEvent event) {
+        cancelFishingSession(event.getPlayer(), "Вы сменили мир.");
+    }
+
+    @EventHandler
+    public void onPlayerDeath(PlayerDeathEvent event) {
+        cancelFishingSession(event.getEntity(), "Вы погибли.");
+    }
+
+    @EventHandler
+    public void onItemBreak(PlayerItemBreakEvent event) {
+        if (event.getBrokenItem().getType() != Material.FISHING_ROD) return;
+        cancelFishingSession(event.getPlayer(), "Удочка сломалась.");
     }
 
     private void stopLakeMonster() {
@@ -1232,5 +1353,413 @@ public final class GFManager implements Listener {
 
         chest.update();
     }
+
+    public void applyResourcePack(Player player) {
+        if (!plugin.getConfig().getBoolean("resourcepack.enabled", true)) return;
+        String url = plugin.getConfig().getString("resourcepack.url", "");
+        if (url == null || url.isBlank()) return;
+        String hashHex = plugin.getConfig().getString("resourcepack.sha1", "");
+        String promptText = plugin.getConfig().getString("resourcepack.prompt", "Для корректного отображения рыбы нужен ресурспак GONE Fishing.");
+        boolean force = plugin.getConfig().getBoolean("resourcepack.force", false);
+
+        if (hashHex != null && !hashHex.isBlank()) {
+            byte[] hash = parseSha1(hashHex.trim());
+            if (hash != null) {
+                player.sendMessage(Text.info(promptText));
+                player.setResourcePack(url, hash, force);
+            } else {
+                plugin.getLogger().warning("Invalid resourcepack sha1 in config.yml, sending without hash.");
+                player.setResourcePack(url, promptText, force);
+            }
+        } else {
+            player.setResourcePack(url, promptText, force);
+        }
+    }
+
+    private void startFishingSession(Player player, FishHook hook) {
+        if (!running || !isInGame(player)) return;
+        if (fishingSessions.containsKey(player.getUniqueId())) return;
+        if (hook == null || hook.isDead()) return;
+
+        int baitTier = GFItems.getBaitTier(player.getInventory().getItemInOffHand());
+        FishSelection selection = rollFishSelection(baitTier);
+        if (selection == null) return;
+
+        int maxHeight = plugin.getConfig().getInt("fishing_minigame.max_height", 100);
+        int baseBarHeight = plugin.getConfig().getInt("fishing_minigame.base_bar_height", 20);
+        int barPerPower = plugin.getConfig().getInt("fishing_minigame.bar_height_per_power", 2);
+        int windowMsPerUnit = plugin.getConfig().getInt("fishing_minigame.window_ms_per_unit", 180);
+        int barHeight = baseBarHeight + sharedRodPower * barPerPower + (sharedWindowBonusMs / Math.max(1, windowMsPerUnit));
+        double lineStrength = Math.min(0.65, Math.max(0.0, sharedRodPower * 0.07));
+
+        FishBehavior behavior = getBehavior(selection.rarity());
+        double reductionFactor = Math.max(0.6, 1.0 - (0.07 * sharedPullReduction));
+        double topSpeed = behavior.topSpeed() * reductionFactor;
+        double upAcc = behavior.upAcceleration() * reductionFactor;
+        double downAcc = behavior.downAcceleration() * reductionFactor;
+
+        double bobberUpAccel = plugin.getConfig().getDouble("fishing_minigame.bobber.up_accel", -0.65);
+        double bobberDownAccel = plugin.getConfig().getDouble("fishing_minigame.bobber.gravity", 0.55);
+        double bobberDrag = plugin.getConfig().getDouble("fishing_minigame.bobber.drag", 0.92);
+        double pointsToFinish = plugin.getConfig().getDouble("fishing_minigame.points_to_finish", 100.0);
+        int timeLimitTicks = plugin.getConfig().getInt("fishing_minigame.time_limit_ticks", 240);
+
+        GFFishingSession session = new GFFishingSession(
+                player.getUniqueId(),
+                hook.getUniqueId(),
+                selection.rarity(),
+                selection.speciesName(),
+                selection.weightKg(),
+                maxHeight,
+                barHeight,
+                pointsToFinish,
+                lineStrength,
+                behavior.idleTimeTicks(),
+                topSpeed,
+                upAcc,
+                downAcc,
+                behavior.avgDistance(),
+                behavior.moveVariation(),
+                bobberUpAccel,
+                bobberDownAccel,
+                bobberDrag,
+                timeLimitTicks
+        );
+        fishingSessions.put(player.getUniqueId(), session);
+        startFishingTickTask();
+
+        if (plugin.getConfig().getBoolean("fishing_minigame.apply_rod_cooldown", true)) {
+            player.setCooldown(Material.FISHING_ROD, timeLimitTicks);
+        }
+
+        player.sendMessage(Text.info("Клюёт! Удерживайте Shift, чтобы контролировать вываживание."));
+        player.playSound(player.getLocation(), Sound.ENTITY_FISHING_BOBBER_SPLASH, 0.8f, 1.2f);
+    }
+
+    private void finishFishingSessionSuccess(Player player, GFFishingSession session) {
+        double accuracy = session.totalTicks() == 0 ? 0.0 : (double) session.successTicks() / session.totalTicks();
+        FishQuality quality = resolveQuality(accuracy);
+        int basePoints = getBasePoints(session.rarity());
+        int baseValue = getBaseValue(session.rarity());
+        double weightMultiplier = getWeightMultiplier(session.weightKg());
+
+        int points = (int) Math.round(basePoints * session.rarity().valueMult * quality.valueMult * sharedPointsMultiplier * weightMultiplier);
+        int value = (int) Math.round(baseValue * session.rarity().valueMult * quality.valueMult * sharedValueMultiplier * weightMultiplier);
+
+        FishData data = new FishData(session.rarity(), quality, session.weightKg(), points, value, false, session.speciesName());
+        giveToPlayer(player, GFItems.createFishItem(data));
+
+        player.sendMessage(Text.ok("Вы вытащили рыбу: " + session.speciesName() + " (" + session.rarity().ruName + ")."));
+        player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 0.7f, 1.4f);
+    }
+
+    private void finishFishingSessionFail(Player player, GFFishingSession session) {
+        player.sendMessage(Text.bad("Рыба сорвалась!"));
+        player.playSound(player.getLocation(), Sound.ENTITY_FISHING_BOBBER_RETRIEVE, 0.8f, 0.7f);
+    }
+
+    private void cancelFishingSession(Player player, String reason) {
+        UUID uuid = player.getUniqueId();
+        GFFishingSession session = fishingSessions.remove(uuid);
+        if (session == null) return;
+        if (reason != null && !reason.isBlank()) {
+            player.sendMessage(Text.info(reason));
+        }
+        clearSessionUi(player);
+    }
+
+    private void clearFishingSessions() {
+        if (fishingTickTask != null) {
+            fishingTickTask.cancel();
+            fishingTickTask = null;
+        }
+        for (UUID uuid : new ArrayList<>(fishingSessions.keySet())) {
+            Player player = Bukkit.getPlayer(uuid);
+            if (player != null) {
+                clearSessionUi(player);
+            }
+        }
+        fishingSessions.clear();
+    }
+
+    private void clearSessionUi(Player player) {
+        org.bukkit.boss.BossBar bar = fishingBossBars.remove(player.getUniqueId());
+        if (bar != null) {
+            bar.removeAll();
+        }
+        player.sendActionBar(Component.empty());
+        player.setCooldown(Material.FISHING_ROD, 0);
+    }
+
+    private void startFishingTickTask() {
+        if (fishingTickTask != null) return;
+        fishingTickTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (fishingSessions.isEmpty()) {
+                    cancel();
+                    fishingTickTask = null;
+                    return;
+                }
+                Iterator<Map.Entry<UUID, GFFishingSession>> iterator = fishingSessions.entrySet().iterator();
+                while (iterator.hasNext()) {
+                    Map.Entry<UUID, GFFishingSession> entry = iterator.next();
+                    UUID uuid = entry.getKey();
+                    GFFishingSession session = entry.getValue();
+                    Player player = Bukkit.getPlayer(uuid);
+                    if (player == null || !player.isOnline()) {
+                        iterator.remove();
+                        continue;
+                    }
+                    if (!running || !isInGame(player) || player.isDead()) {
+                        clearSessionUi(player);
+                        iterator.remove();
+                        continue;
+                    }
+                    ItemStack rod = player.getInventory().getItemInMainHand();
+                    if (rod == null || rod.getType() != Material.FISHING_ROD) {
+                        cancelFishingSession(player, "Вы перестали держать удочку.");
+                        continue;
+                    }
+                    if (plugin.getConfig().getBoolean("fishing_minigame.only_starter_rod", true)
+                            && !GFItems.isStarterRod(rod)) {
+                        cancelFishingSession(player, "Вы перестали использовать стартовую удочку.");
+                        continue;
+                    }
+                    Entity hookEntity = session.hookId() == null ? null : Bukkit.getEntity(session.hookId());
+                    if (!(hookEntity instanceof FishHook) || hookEntity.isDead()) {
+                        cancelFishingSession(player, "Поплавок исчез.");
+                        continue;
+                    }
+
+                    session.tick(player.isSneaking());
+                    updateSessionUi(player, session);
+
+                    if (session.isSuccess()) {
+                        finishFishingSessionSuccess(player, session);
+                        clearSessionUi(player);
+                        iterator.remove();
+                    } else if (session.isFailed()) {
+                        finishFishingSessionFail(player, session);
+                        clearSessionUi(player);
+                        iterator.remove();
+                    }
+                }
+            }
+        }.runTaskTimer(plugin, 1L, 1L);
+    }
+
+    private void updateSessionUi(Player player, GFFishingSession session) {
+        player.sendActionBar(buildActionBar(session));
+        if (!plugin.getConfig().getBoolean("fishing_minigame.use_bossbar", false)) return;
+
+        org.bukkit.boss.BossBar bar = fishingBossBars.computeIfAbsent(player.getUniqueId(), id -> {
+            org.bukkit.boss.BossBar created = Bukkit.createBossBar("", barColorForRarity(session.rarity()), org.bukkit.boss.BarStyle.SEGMENTED_12);
+            created.addPlayer(player);
+            return created;
+        });
+        bar.setTitle("Вываживание: " + session.speciesName() + " (" + session.rarity().ruName + ")");
+        bar.setProgress(session.progress01());
+    }
+
+    private Component buildActionBar(GFFishingSession session) {
+        int width = plugin.getConfig().getInt("fishing_minigame.actionbar_width", ACTIONBAR_WIDTH);
+        width = Math.max(14, Math.min(60, width));
+        int fishIndex = toIndex(session.fishPos(), session.maxHeight(), width);
+        int barStart = toIndex(session.bobberPos(), session.maxHeight(), width);
+        int barEnd = toIndex(session.bobberPos() + session.barHeight(), session.maxHeight(), width);
+        if (barEnd < barStart) {
+            int tmp = barStart;
+            barStart = barEnd;
+            barEnd = tmp;
+        }
+
+        Component bar = BAR_OPEN;
+        for (int i = 0; i < width; i++) {
+            if (i == fishIndex) {
+                bar = bar.append(Component.text(FISH_CHAR, session.rarity().color).decoration(TextDecoration.BOLD, true));
+            } else if (i >= barStart && i <= barEnd) {
+                bar = bar.append(Component.text(BAR_CHAR, NamedTextColor.GREEN));
+            } else {
+                bar = bar.append(Component.text(BACKGROUND_CHAR, NamedTextColor.DARK_GRAY));
+            }
+        }
+        int percent = (int) Math.round(session.progress01() * 100);
+        Component percentComp = Component.text(" " + percent + "%", session.rarity() == FishRarity.LEGENDARY ? NamedTextColor.GOLD : NamedTextColor.WHITE);
+        return bar.append(BAR_CLOSE).append(percentComp);
+    }
+
+    private int toIndex(double pos, int maxHeight, int width) {
+        double ratio = pos / Math.max(1.0, maxHeight);
+        int idx = (int) Math.round(ratio * (width - 1));
+        return Math.max(0, Math.min(width - 1, idx));
+    }
+
+    private FishSelection rollFishSelection(int baitTier) {
+        double nightChance = plugin.getConfig().getDouble("fish_gen.night_pool_chance", 0.25);
+        if (isNight && random.nextDouble() < nightChance) {
+            List<GFItems.NightFishSpec> nightPool = GFItems.getNightFishPool();
+            if (!nightPool.isEmpty()) {
+                GFItems.NightFishSpec spec = nightPool.get(random.nextInt(nightPool.size()));
+                double weight = randomRange(spec.minWeight(), spec.maxWeight());
+                return new FishSelection(spec.rarity(), spec.name(), weight);
+            }
+        }
+
+        FishRarity rarity = rollRarity(baitTier);
+        List<String> pool = GFItems.getSpeciesPool(rarity);
+        if (pool.isEmpty()) return null;
+        String species = pool.get(random.nextInt(pool.size()));
+        double[] range = getWeightRange(rarity);
+        double weight = randomRange(range[0], range[1]);
+        return new FishSelection(rarity, species, weight);
+    }
+
+    private FishRarity rollRarity(int baitTier) {
+        String basePath = "fish_gen.rarity_weights." + (isNight ? "night" : "day") + ".";
+        double common = plugin.getConfig().getDouble(basePath + "common", 65.0);
+        double uncommon = plugin.getConfig().getDouble(basePath + "uncommon", 25.0);
+        double rare = plugin.getConfig().getDouble(basePath + "rare", 8.0);
+        double epic = plugin.getConfig().getDouble(basePath + "epic", 1.5);
+        double legendary = plugin.getConfig().getDouble(basePath + "legendary", 0.5);
+
+        FishRarity rolled = rollByWeights(common, uncommon, rare, epic, legendary);
+
+        int shiftRolls = sharedRodLuck;
+        if (baitTier == 2) {
+            shiftRolls += plugin.getConfig().getInt("fish_gen.bait_shift_rolls.tier2", 1);
+        } else if (baitTier >= 3) {
+            shiftRolls += plugin.getConfig().getInt("fish_gen.bait_shift_rolls.tier3", 2);
+        }
+        double shiftChance = plugin.getConfig().getDouble("fish_gen.luck_shift_chance_per_level", 0.02);
+        for (int i = 0; i < shiftRolls; i++) {
+            if (random.nextDouble() < shiftChance) {
+                rolled = nextRarity(rolled);
+            }
+        }
+        return rolled;
+    }
+
+    private FishRarity rollByWeights(double common, double uncommon, double rare, double epic, double legendary) {
+        double total = common + uncommon + rare + epic + legendary;
+        double roll = random.nextDouble() * total;
+        if ((roll -= common) < 0) return FishRarity.COMMON;
+        if ((roll -= uncommon) < 0) return FishRarity.UNCOMMON;
+        if ((roll -= rare) < 0) return FishRarity.RARE;
+        if ((roll -= epic) < 0) return FishRarity.EPIC;
+        return FishRarity.LEGENDARY;
+    }
+
+    private FishRarity nextRarity(FishRarity rarity) {
+        return switch (rarity) {
+            case COMMON -> FishRarity.UNCOMMON;
+            case UNCOMMON -> FishRarity.RARE;
+            case RARE -> FishRarity.EPIC;
+            case EPIC -> FishRarity.LEGENDARY;
+            case LEGENDARY -> FishRarity.LEGENDARY;
+        };
+    }
+
+    private double[] getWeightRange(FishRarity rarity) {
+        String key = rarityKey(rarity);
+        double min = plugin.getConfig().getDouble("fish_gen.weight_ranges." + key + ".min", 0.2);
+        double max = plugin.getConfig().getDouble("fish_gen.weight_ranges." + key + ".max", 2.0);
+        if (max < min) max = min;
+        return new double[]{min, max};
+    }
+
+    private int getBasePoints(FishRarity rarity) {
+        return plugin.getConfig().getInt("fish_gen.base_points." + rarityKey(rarity), 4);
+    }
+
+    private int getBaseValue(FishRarity rarity) {
+        return plugin.getConfig().getInt("fish_gen.base_value." + rarityKey(rarity), 20);
+    }
+
+    private double getWeightMultiplier(double weight) {
+        double base = plugin.getConfig().getDouble("fish_gen.weight_value_multiplier.base", 0.85);
+        double divisor = plugin.getConfig().getDouble("fish_gen.weight_value_multiplier.divisor", 20.0);
+        return base + (weight / Math.max(1.0, divisor));
+    }
+
+    private String rarityKey(FishRarity rarity) {
+        return switch (rarity) {
+            case COMMON -> "common";
+            case UNCOMMON -> "uncommon";
+            case RARE -> "rare";
+            case EPIC -> "epic";
+            case LEGENDARY -> "legendary";
+        };
+    }
+
+    private FishBehavior getBehavior(FishRarity rarity) {
+        String key = "fishing_minigame.behavior." + rarityKey(rarity) + ".";
+        int idle = plugin.getConfig().getInt(key + "idle", 10);
+        double topSpeed = plugin.getConfig().getDouble(key + "top_speed", 2.2);
+        double upAcc = plugin.getConfig().getDouble(key + "up_accel", 0.35);
+        double downAcc = plugin.getConfig().getDouble(key + "down_accel", 0.4);
+        int avgDist = plugin.getConfig().getInt(key + "avg_distance", 26);
+        int variation = plugin.getConfig().getInt(key + "move_variation", 14);
+        return new FishBehavior(idle, topSpeed, upAcc, downAcc, avgDist, variation);
+    }
+
+    private FishQuality resolveQuality(double accuracy) {
+        if (accuracy >= 0.88) return FishQuality.IRIDIUM;
+        if (accuracy >= 0.72) return FishQuality.GOLD;
+        if (accuracy >= 0.55) return FishQuality.SILVER;
+        return FishQuality.NORMAL;
+    }
+
+    private double randomRange(double min, double max) {
+        if (max < min) return min;
+        return min + (random.nextDouble() * (max - min));
+    }
+
+    private org.bukkit.boss.BarColor barColorForRarity(FishRarity rarity) {
+        return switch (rarity) {
+            case COMMON -> org.bukkit.boss.BarColor.GREEN;
+            case UNCOMMON -> org.bukkit.boss.BarColor.BLUE;
+            case RARE -> org.bukkit.boss.BarColor.PURPLE;
+            case EPIC -> org.bukkit.boss.BarColor.RED;
+            case LEGENDARY -> org.bukkit.boss.BarColor.YELLOW;
+        };
+    }
+
+    private byte[] parseSha1(String hex) {
+        if (hex == null) return null;
+        String cleaned = hex.replaceAll("\\s+", "");
+        if (cleaned.length() != 40) return null;
+        byte[] out = new byte[20];
+        for (int i = 0; i < out.length; i++) {
+            int idx = i * 2;
+            try {
+                out[i] = (byte) Integer.parseInt(cleaned.substring(idx, idx + 2), 16);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+        return out;
+    }
+
+    private void logFishModelInfo() {
+        int common = GFItems.getSpeciesPool(FishRarity.COMMON).size();
+        int uncommon = GFItems.getSpeciesPool(FishRarity.UNCOMMON).size();
+        int rare = GFItems.getSpeciesPool(FishRarity.RARE).size();
+        int epic = GFItems.getSpeciesPool(FishRarity.EPIC).size();
+        int legendary = GFItems.getSpeciesPool(FishRarity.LEGENDARY).size();
+        int night = GFItems.getNightFishPool().size();
+        int total = common + uncommon + rare + epic + legendary + night;
+        int maxRaw = 1000 + total;
+        int maxCooked = 2000 + total;
+        if (total == 49 && maxRaw == 1049 && maxCooked == 2049) {
+            plugin.getLogger().info("GF fish models: " + total + " видов, max raw=" + maxRaw + ", max cooked=" + maxCooked + ".");
+        } else {
+            plugin.getLogger().warning("GF fish models mismatch: total=" + total + ", max raw=" + maxRaw + ", max cooked=" + maxCooked + ".");
+        }
+    }
+
+    private record FishSelection(FishRarity rarity, String speciesName, double weightKg) {}
+
+    private record FishBehavior(int idleTimeTicks, double topSpeed, double upAcceleration, double downAcceleration, int avgDistance, int moveVariation) {}
 
 }
