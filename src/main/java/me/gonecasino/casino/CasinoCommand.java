@@ -168,7 +168,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
             }
             case "gf" -> {
                 if (args.length < 2) {
-                    player.sendMessage(Text.info("/casino gf join|leave|start|stop|status"));
+                    player.sendMessage(Text.info("/casino gf join|leave|start|stop|status|pack"));
                     return true;
                 }
                 String a = args[1].toLowerCase();
@@ -197,6 +197,10 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
                         }
                         plugin.gf().resetProgress(player);
                     }
+                    case "pack" -> {
+                        plugin.gf().applyResourcePack(player);
+                        player.sendMessage(Text.info("Ресурспак отправлен повторно."));
+                    }
                     default -> player.sendMessage(Text.bad("Неизвестно: " + a));
                 }
                 return true;
@@ -213,7 +217,7 @@ public final class CasinoCommand implements CommandExecutor, TabCompleter {
             return prefix(args[0], Arrays.asList("balance", "pay", "givechips", "gf", "setaltar", "delaltar", "settable", "deltable"));
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("gf")) {
-            return prefix(args[1], Arrays.asList("join", "leave", "start", "stop", "status", "reset"));
+            return prefix(args[1], Arrays.asList("join", "leave", "start", "stop", "status", "reset", "pack"));
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("settable")) {
             return prefix(args[1], List.of("SLOT"));
