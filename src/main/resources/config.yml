@@ -54,3 +54,120 @@ upgrades:
 # Vault economy settings
 economy:
   bank_name: "gonecasino"
+
+# Resource pack settings (for fish models)
+resourcepack:
+  enabled: true
+  url: "https://ВАШ_ХОСТ/gf_fish_resourcepack_1.20.6_named_pretty.zip"
+  sha1: ""
+  force: false
+  prompt: "Для корректного отображения рыбы нужен ресурспак GONE Fishing."
+
+# Fishing minigame tuning
+fishing_minigame:
+  only_starter_rod: true
+  use_bossbar: false
+  actionbar_width: 30
+  max_height: 100
+  base_bar_height: 20
+  bar_height_per_power: 2
+  window_ms_per_unit: 180
+  points_to_finish: 100
+  time_limit_ticks: 240
+  apply_rod_cooldown: true
+  bobber:
+    up_accel: -0.65
+    gravity: 0.55
+    drag: 0.92
+  dash:
+    enabled: true
+    cooldown_ms: 1200
+    points_bonus: 6
+  behavior:
+    common:
+      idle: 10
+      top_speed: 2.2
+      up_accel: 0.35
+      down_accel: 0.40
+      avg_distance: 26
+      move_variation: 14
+    uncommon:
+      idle: 8
+      top_speed: 2.5
+      up_accel: 0.40
+      down_accel: 0.45
+      avg_distance: 30
+      move_variation: 16
+    rare:
+      idle: 7
+      top_speed: 2.9
+      up_accel: 0.48
+      down_accel: 0.52
+      avg_distance: 34
+      move_variation: 18
+    epic:
+      idle: 6
+      top_speed: 3.3
+      up_accel: 0.58
+      down_accel: 0.62
+      avg_distance: 38
+      move_variation: 22
+    legendary:
+      idle: 5
+      top_speed: 3.8
+      up_accel: 0.68
+      down_accel: 0.72
+      avg_distance: 42
+      move_variation: 26
+
+# Fish generation/balance
+fish_gen:
+  night_pool_chance: 0.25
+  luck_shift_chance_per_level: 0.02
+  bait_shift_rolls:
+    tier2: 1
+    tier3: 2
+  rarity_weights:
+    day:
+      common: 65
+      uncommon: 25
+      rare: 8
+      epic: 1.5
+      legendary: 0.5
+    night:
+      common: 45
+      uncommon: 30
+      rare: 17
+      epic: 6
+      legendary: 2
+  weight_ranges:
+    common:
+      min: 0.2
+      max: 2.0
+    uncommon:
+      min: 0.4
+      max: 3.5
+    rare:
+      min: 0.8
+      max: 6.5
+    epic:
+      min: 1.5
+      max: 12.0
+    legendary:
+      min: 3.0
+      max: 20.0
+  base_points:
+    common: 4
+    uncommon: 7
+    rare: 12
+    epic: 19
+    legendary: 30
+  base_value:
+    common: 20
+    uncommon: 40
+    rare: 85
+    epic: 140
+    legendary: 230
+  weight_value_multiplier:
+    base: 0.85
+    divisor: 20.0
